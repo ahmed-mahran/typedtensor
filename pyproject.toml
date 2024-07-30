@@ -3,5 +3,6 @@ name = "typed-tensor"
 description = "Yet another type annotations and runtime checking for tensor shape and datatype ..."
 version = "0.0.0"
 readme = "README.md"
+authors = [{name = "Ahmed Mahran", email = "ahmed.mahran@mashin.io"}]
 requires-python = ">=3.12"
 dependencies = []
