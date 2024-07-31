@@ -4,5 +4,23 @@ description = "Yet another type annotations and runtime checking for tensor shap
 version = "0.0.0"
 readme = "README.md"
 authors = [{name = "Ahmed Mahran", email = "ahmed.mahran@mashin.io"}]
+urls = {repository = "https://github.com/ahmed-mahran/typed-tensor" }
+license = {file = "LICENSE"}
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+  "torch"
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build]
+include = ["typed-tensor/*"]
+
+[tool.ruff]
+line-length = 120
+src = ["typed-tensor", "examples"]
+fix = true
+show-fixes = true
+
