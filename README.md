@@ -1,7 +1,7 @@
 # typedtensor
 Yet another type annotations and runtime checking for tensor shape and datatype.
 
-This is a python excersie trying to write statically typed and maybe functional style code by a scala minded person.
+This is a python exercise trying to write statically typed and maybe functional style code by a scala minded person.
 
 This is an opportunity to challenge python's static typing capabilities to express common patterns in neural networks. 
 
