@@ -321,7 +321,7 @@ def _extract_typed_args[DType: Tensor](
         # [..., arg = T: bound = None, ...]
         elif _is_type_var_of_bound(arg, None):
             return [UnboundAbstractDimensionArgInfo(name=arg.__name__)]
-        # [..., arg = Dimension, ...]
+        # [..., arg = Concat[L, R], ...]
         elif _is_generic_type(arg, Concat):
             concat_args = getattr(arg, "__args__")
             left = _unpack_recognize_arg(concat_args[0])[0]
