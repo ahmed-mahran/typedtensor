@@ -1,10 +1,11 @@
-from .dimension import Dimension, Z, dimension
-from .typed_tensor import TypedTensor, is_instance_of, addmm
+from .dimension import Concat, Dimension, Z, dimension
 from .shape_info import (
-    DimensionArgInfo,
-    ConcreteDimensionArgInfo,
     AbstractDimensionArgInfo,
-    UnboundAbstractDimensionArgInfo,
+    ConcatDimensionArgInfo,
+    ConcreteDimensionArgInfo,
+    DimensionArgInfo,
     RepeatedDimensionArgInfo,
     ShapeInfo,
+    UnboundAbstractDimensionArgInfo,
 )
+from .typed_tensor import TypedTensor, addmm, is_instance_of

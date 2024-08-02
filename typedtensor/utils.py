@@ -1,8 +1,13 @@
 from abc import ABC, abstractmethod
 from logging import Logger
-from typing import Any, Callable, List, Optional, Tuple, Type, TypeGuard, TypeVar, cast
+from typing import Any, Callable, List, Optional, Tuple, Type, TypeGuard, TypeVar, Unpack, cast
 
 import torch
+
+# typing._UnpackGenericAlias
+_Unpack_type = type(Unpack[...])  # type: ignore
+# typing._GenericAlias
+_GenericAlias = type(Tuple[Any])
 
 
 def _is_tensor_subclass[T, P](tp: Type[T], parent: Type[P]) -> bool:
@@ -32,6 +37,15 @@ def _is_type_var_of_bound(arg: Any, bound: Optional[Type] = None) -> TypeGuard[T
             arg_bound is not None and bound is not None and _is_tensor_subclass(arg_bound, bound)
         )
     return False
+
+
+def _is_generic_type[T](arg, tp: Type[T]) -> bool:
+    return (
+        issubclass(type(arg), _GenericAlias)
+        and hasattr(arg, "__origin__")
+        and getattr(arg, "__origin__") is tp
+        and hasattr(arg, "__args__")
+    )
 
 
 class CaptureTypeArgs(ABC):
