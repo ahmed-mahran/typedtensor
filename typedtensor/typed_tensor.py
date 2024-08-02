@@ -2,19 +2,19 @@ from __future__ import annotations
 
 import logging
 from inspect import isclass
-from typing import Callable, Optional, Tuple, Type, TypeGuard, cast, overload
+from typing import Callable, Optional, Tuple, Type, TypeGuard, cast, overload, override
 
 import torch
 from torch import Size, Tensor
 
 from .dimension import Dimension, Z
 from .shape_info import DimensionArgInfo, ShapeInfo, _extract_typed_args, _is_repeated
-from .utils import _is_tensor_subclass, _is_type_var_of_bound
+from .utils import CaptureTypeArgs, _is_tensor_subclass, _is_type_var_of_bound
 
 logger = logging.getLogger(__name__)
 
 
-class TypedTensor[DType: Tensor, *Dimensions]:
+class TypedTensor[DType: Tensor, *Dimensions](CaptureTypeArgs):
     # When TypedTensor class is subscripted, a new _GenericAlias
     # is created which holds three special attributes for internal bookkeeping of generic types:
     # * __parameters__ is a tuple of unique free type parameters of a generic
@@ -46,20 +46,16 @@ class TypedTensor[DType: Tensor, *Dimensions]:
             return self._self_
         raise TypeError(f"This tensor has an invalid type: {type(self)}")
 
-    def _orig_class__setter(self, value):
-        self._orig_class = value
+    @override
+    def _on_type_args(self, type_args: Tuple[Type]):
         if self._args is None:
-            self._args = value.__args__
+            self._args = type_args
             self._typed_args = None
             try:
                 if TypedTensor.assert_valid_typed_tensor(self):
                     self._self_ = self
             except Exception as type_error:
                 self._type_error = type_error
-
-    __orig_class__ = property(
-        fget=lambda self: self._orig_class, fset=_orig_class__setter
-    )
 
     @property
     def args(self) -> Tuple[type, ...]:
@@ -421,6 +417,7 @@ def is_instance_of[DType: Tensor, *Dimensions, T](
         return False
 
     return step(0, 0, "", [], [])
+
 
 def addmm[DType: Tensor, *Ds, D0, D1, D2](
         input: torch.Tensor,

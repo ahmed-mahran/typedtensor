@@ -1,4 +1,5 @@
-from typing import Any, Optional, Type, TypeGuard, TypeVar, cast
+from abc import ABC, abstractmethod
+from typing import Any, Optional, Tuple, Type, TypeGuard, TypeVar, cast
 
 import torch
 
@@ -32,3 +33,16 @@ def _is_type_var_of_bound(arg: Any, bound: Optional[Type] = None) -> TypeGuard[T
             and _is_tensor_subclass(arg_bound, bound)
         )
     return False
+
+class CaptureTypeArgs(ABC):
+    def _orig_class__setter(self, value):
+        self._orig_class = value
+        self._on_type_args(value.__args__)
+
+    __orig_class__ = property(
+        fget=lambda self: self._orig_class, fset=_orig_class__setter
+    )
+
+    @abstractmethod
+    def _on_type_args(self, type_args: Tuple[Type, ...]):
+        pass
