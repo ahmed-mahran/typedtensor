@@ -9,7 +9,7 @@ from torch import Size, Tensor
 
 from .dimension import Dimension, Z
 from .shape_info import DimensionArgInfo, ShapeInfo, _extract_typed_args, _is_repeated
-from .utils import CaptureTypeArgs, _is_tensor_subclass, _is_type_var_of_bound
+from .utils import CaptureTypeArgs, _is_tensor_subclass, _is_type_var_of_bound, match_sequence
 
 logger = logging.getLogger(__name__)
 
@@ -80,9 +80,7 @@ class TypedTensor[DType: Tensor, *Dimensions](CaptureTypeArgs):
 
     def copy_with_tensor[T: TypedTensor](self: T, tensor: DType) -> T:
         if tensor.size() != self.tensor.size():
-            raise ValueError(
-                f"Tensor sizes must match; provided {tensor.size()} while having {self.tensor.size()}"
-            )
+            raise ValueError(f"Tensor sizes must match; provided {tensor.size()} while having {self.tensor.size()}")
         t = TypedTensor(tensor)
         t._args = self._args
         t._type_error = self._type_error
@@ -133,9 +131,7 @@ class TypedTensor[DType: Tensor, *Dimensions](CaptureTypeArgs):
         def __init__(self, o: TypedTensor[T, *Dimensions]):
             self.o = o
 
-        def __getitem__[D0, D1](
-            self, item: Tuple[D0, D1]
-        ) -> TypedTensor[T, Z[Dimension], D0, D1]:
+        def __getitem__[D0, D1](self, item: Tuple[D0, D1]) -> TypedTensor[T, Z[Dimension], D0, D1]:
             return self.o.asinstanceof[TypedTensor[T, Z[Dimension], D0, D1]]
 
     @property
@@ -151,9 +147,7 @@ class TypedTensor[DType: Tensor, *Dimensions](CaptureTypeArgs):
         def __getitem__[D0, D1](
             self, item: Tuple[D0, D1]
         ) -> TypedTensor[T, Z[Dimension], D0, Z[Dimension], D1, Z[Dimension]]:
-            return self.o.asinstanceof[
-                TypedTensor[T, Z[Dimension], D0, Z[Dimension], D1, Z[Dimension]]
-            ]
+            return self.o.asinstanceof[TypedTensor[T, Z[Dimension], D0, Z[Dimension], D1, Z[Dimension]]]
 
     @property
     def as_z_d0_z_d1_z[T: Tensor](
@@ -212,16 +206,12 @@ class TypedTensor[DType: Tensor, *Dimensions](CaptureTypeArgs):
         dim0: int,
         dim1: int,
     ) -> TypedTensor[DType, Z[Dimension], D1, Z[Dimension], D0, Z[Dimension]]:
-        me = self.asinstanceof[
-            TypedTensor[DType, Z[Dimension], D0, Z[Dimension], D1, Z[Dimension]]
-        ]
+        me = self.asinstanceof[TypedTensor[DType, Z[Dimension], D0, Z[Dimension], D1, Z[Dimension]]]
         ts = list(me.args[1:])
         d0, d1 = ts[dim0], ts[dim1]
         ts[dim0] = d1
         ts[dim1] = d0
-        return TypedTensor(
-            cast(DType, me.tensor.transpose(dim0, dim1)), tuple([me.args[0]] + ts)
-        )
+        return TypedTensor(cast(DType, me.tensor.transpose(dim0, dim1)), tuple([me.args[0]] + ts))
 
     @overload
     def size(self, dim: None = None) -> Size: ...
@@ -250,9 +240,7 @@ class TypedTensor[DType: Tensor, *Dimensions](CaptureTypeArgs):
         return self.transform(lambda t: cast(DType, t * other))
 
 
-def is_instance_of[DType: Tensor, *Dimensions, T](
-    t: TypedTensor[DType, *Dimensions], tp: Type[T]
-) -> TypeGuard[T]:
+def is_instance_of[DType: Tensor, *Dimensions, T](t: TypedTensor[DType, *Dimensions], tp: Type[T]) -> TypeGuard[T]:
     tensor_dtype, tensor_shape_info = t.typed_args
     if hasattr(tp, "__args__"):
         type_dtype, type_shape_info = _extract_typed_args(getattr(tp, "__args__"))
@@ -263,9 +251,7 @@ def is_instance_of[DType: Tensor, *Dimensions, T](
         if not _is_tensor_subclass(tensor_dtype, type_dtype):
             return False
     elif _is_type_var_of_bound(type_dtype, Tensor):
-        if type_dtype.__bound__ is None or not _is_tensor_subclass(
-            tensor_dtype, type_dtype.__bound__
-        ):
+        if type_dtype.__bound__ is None or not _is_tensor_subclass(tensor_dtype, type_dtype.__bound__):
             return False
 
     tensor_type_args = tensor_shape_info.args
@@ -273,156 +259,16 @@ def is_instance_of[DType: Tensor, *Dimensions, T](
 
     logger.debug(f"Is {tensor_type_args} <= {type_type_args}?")
 
-    # Two sequences with non-repeating dimensions match if they have the same length and corresponding
-    # entries at the same index match. Repeating dimensions adds complexity to the logic; we cannot
-    # compare lengths of sequences to decide on matching. However, we can compare lengths of ordered
-    # traversal steps. In that case, two sequences with possibly repeating dimensions match if there
-    # are at least two complete and ordered traversals, one traversal per sequence, with same length
-    # of steps, covering all items in the original sequence (hence complete) in the same order of items
-    # in the original sequence (hence ordered), and with matching corresponding entries per step index.
-    #
-    # Traversal of a sequence of type arguments (e.g. [Dimension, BatchDim, *Dimensions, ...])
-    # can be represented as a traversal on a directed graph, such that a node represents a state
-    # of traversal and an edge represents a dimension that acts as a condition to determine the
-    # next state of traversal.
-    #
-    # For the sequence [A, B, C, D], one state could be the initial state where we enter the
-    # sequence, another state could be the final state where we terminate traversal at end
-    # of the sequence, another state could be an intermediate state that we have reached
-    # dimension B after A and we are ready to go to dimension C ...
-    #
-    # A non-repeating dimension has a single condition (or outgoing edge), it transitions the current
-    # state to a single next state.
-    # A repeating dimension has two conditions (or outgoing edges), it transitions the current state
-    # back to itself or to a single next state.
-    #
-    # The non-minimized traversal graph is a chain of nodes with no loops involving more than one node.
-    # This implies that we can traverse the graph from start to end passing by all nodes.
-    #
-    # If we could find any two matching traversals, then we could decide that both sequences match.
-    #
-    # This step function is a recursive function for searching two graphs for matching traversals.
-    # At any time t (a step index in the traversal sequence), we keep an index i and an index j of
-    # the current traversed nodes of both graphs. Each node i (or j) has possible next steps; if it
-    # is a non-repeating node, then it has only one next step: the next node in the sequence (i + 1),
-    # if it is a repeating node, then it has two possible next steps: the next node in the sequence
-    # (i + 1) or back to itself (i). At each traversal step, we consider all possible next steps
-    # , and we select the first one leading to a match.
-    #
-    # Repeated nodes could have zero or more matches. In case of zero match, the repeated node acts as
-    # a skip connection between both nodes it is connecting (i.e. previous and next). In that case, a
-    # repeated node adds one more skip edge from previous node to next node.
-    #
-    # If a traversal reaches the end of both graphs, then we conclude a match. Otherwise, a traversal
-    # can be early terminated:
-    # - if current nodes i and j are not matching
-    # - either one of the graph has reached the end node while the other has not
-    # - a special case is when a graph has reached the end node while the other
-    #   has repeating nodes before the end node, in this case we consider the
-    #   repeating nodes are matching for 0 occurrences in the other sequence
-    #
-    # [B, S] VS [d*, B, S]
-    # _E0: epsilon_0, is the start condition
-    #  _E: epsilon, is the termination condition
-    #  _S: is the skip condition
-    #
-    #  _E0      B       S      _E
-    # ----->()----->()----->()----->
-    #       ..
-    #       || d*
-    #  _E0  v|  B       S      _E
-    # -.--->()----.>()----->()----->
-    #   \......../
-    #       _S
-    def step(
-        i: int,
-        j: int,
-        indent: str,
-        left: list[DimensionArgInfo],
-        right: list[DimensionArgInfo],
-    ):
-        def line(content: str):
-            logger.debug(f"{indent}{content}")
+    def a_matches_b[I: DimensionArgInfo](a: I, b: I) -> bool:
+        return a.is_subclass(b)
 
-        t_i = tensor_type_args[i] if i < len(tensor_type_args) else None
-        t_j = type_type_args[j] if j < len(type_type_args) else None
-        if t_i is not None:
-            left = [a for a in left] + [t_i]
-        if t_j is not None:
-            right = [a for a in right] + [t_j]
-        line(f"step({left} <=> {right} || {i}: {t_i}, {j}: {t_j})")
-
-        # both have terminated, that's a match
-        if t_i is None and t_j is None:
-            line("[ACCEPT] both terminated")
-            return True
-
-        # i has terminated while j has not
-        if t_i is None:
-            # if j is repeated (0 or more) just consume it (j + 1)
-            # return step(i, j + 1) if _is_repeated(t_j) else False
-            if _is_repeated(t_j):
-                line("* i terminated but j is repeated")
-                return step(i, j + 1, indent + "-", left, right)
-            else:
-                line("[REJECT] i terminated but j is not")
-                return False
-        # j has terminated while i has not
-        if t_j is None:
-            # if i is repeated (0 or more) just consume it (i + 1)
-            # return step(i + 1, j) if _is_repeated(t_i) else False
-            if _is_repeated(t_i):
-                line("* j terminated but i is repeated")
-                return step(i + 1, j, indent + "-", left, right)
-            else:
-                line("[REJECT] j terminated but i is not")
-                return False
-        # break on mismatch
-        if not t_i.is_subclass(t_j):
-            line("[REJECT] i is not subclass of j")
-            return False
-
-        # now consider all possible next steps
-        # steps = []
-        # if _is_repeated(t_i):
-        #     steps += [(i + 1, j), (i, j + 1), (i + 1, j + 1)]
-        # else:
-        #     steps += [(i + 1, j + 1)]
-        #
-        # if _is_repeated(t_j):
-        #     steps += [(i, j + 1), (i + 1, j), (i + 1, j + 1)]
-        # else:
-        #     steps += [(i + 1, j + 1)]
-        # steps = list(set(steps))
-        # if the other node, t_j, is repeated, we add a skip edge from (j - 1) to (j + 1)
-        # which is equivalent to moving from (i - 1, j - 1) to (i, j + 1)
-        # which means that if we were at node (j - 1), one of the possible steps is to jump
-        # to node (j + 1), or equivalently, if we are at node i and node j is repeated,
-        # we can stay at node i and just move to next node (j + 1)
-        t_i_steps = [i, i + 1] if _is_repeated(t_i) or _is_repeated(t_j) else [i + 1]
-        t_j_steps = [j, j + 1] if _is_repeated(t_j) or _is_repeated(t_i) else [j + 1]
-        # be careful not to stay at the same state where (i, j) = (i_step, j_step)
-        steps = [
-            (i_step, j_step)
-            for i_step in t_i_steps
-            for j_step in t_j_steps
-            if i_step != i or j_step != j
-        ]
-        line(f"* steps: {steps}")
-        for next_i, next_j in steps:
-            # we have found a match in one of the possible next steps
-            if step(next_i, next_j, indent + "-", left, right):
-                return True
-        # no matches found in any possible next step
-        return False
-
-    return step(0, 0, "", [], [])
+    return match_sequence(
+        0, 0, tensor_type_args, type_type_args, _is_repeated, _is_repeated, a_matches_b, "", [], [], logger
+    )
 
 
 def addmm[DType: Tensor, *Ds, D0, D1, D2](
-        input: torch.Tensor,
-        mat1: TypedTensor[DType, *Ds, D0, D1],
-        mat2: TypedTensor[DType, *Ds, D1, D2]
+    input: torch.Tensor, mat1: TypedTensor[DType, *Ds, D0, D1], mat2: TypedTensor[DType, *Ds, D1, D2]
 ) -> TypedTensor[DType, *Ds, D0, D2]:
     ts1 = list(mat1.args)
     ts2 = list(mat2.args)
