@@ -262,9 +262,7 @@ def is_instance_of[DType: Tensor, *Dimensions, T](t: TypedTensor[DType, *Dimensi
     def a_matches_b[I: DimensionArgInfo](a: I, b: I) -> bool:
         return a.is_subclass(b)
 
-    return match_sequence(
-        0, 0, tensor_type_args, type_type_args, _is_repeated, _is_repeated, a_matches_b, "", [], [], logger
-    )
+    return match_sequence(tensor_type_args, type_type_args, _is_repeated, _is_repeated, a_matches_b, logger)
 
 
 def addmm[DType: Tensor, *Ds, D0, D1, D2](

@@ -108,120 +108,82 @@ class CaptureTypeArgs(ABC):
 #   \......../
 #       _S
 def match_sequence[A, B](
-    i: int,
-    j: int,
     a_sequence: List[A],
     b_sequence: List[B],
     is_repeated_a: Callable[[Optional[A]], bool],
     is_repeated_b: Callable[[Optional[B]], bool],
     a_matches_b: Callable[[A, B], bool],
-    indent: str,
-    left: List[A],
-    right: List[B],
     logger: Logger,
 ):
-    def line(content: str):
-        logger.debug(f"{indent}{content}")
+    def step(i: int, j: int, indent: str, left: List[A], right: List[B]):
+        def line(content: str):
+            logger.debug(f"{indent}{content}")
 
-    t_i = a_sequence[i] if i < len(a_sequence) else None
-    t_j = b_sequence[j] if j < len(b_sequence) else None
-    if t_i is not None:
-        left = [a for a in left] + [t_i]
-    if t_j is not None:
-        right = [a for a in right] + [t_j]
-    line(f"step({left} <=> {right} || {i}: {t_i}, {j}: {t_j})")
+        t_i = a_sequence[i] if i < len(a_sequence) else None
+        t_j = b_sequence[j] if j < len(b_sequence) else None
+        if t_i is not None:
+            left = [a for a in left] + [t_i]
+        if t_j is not None:
+            right = [a for a in right] + [t_j]
+        line(f"step({left} <=> {right} || {i}: {t_i}, {j}: {t_j})")
 
-    # both have terminated, that's a match
-    if t_i is None and t_j is None:
-        line("[ACCEPT] both terminated")
-        return True
+        # both have terminated, that's a match
+        if t_i is None and t_j is None:
+            line("[ACCEPT] both terminated")
+            return True
 
-    # i has terminated while j has not
-    if t_i is None:
-        # if j is repeated (0 or more) just consume it (j + 1)
-        # return step(i, j + 1) if is_repeated_b(t_j) else False
-        if is_repeated_b(t_j):
-            line("* i terminated but j is repeated")
-            return match_sequence(
-                i,
-                j + 1,
-                a_sequence,
-                b_sequence,
-                is_repeated_a,
-                is_repeated_b,
-                a_matches_b,
-                indent + "-",
-                left,
-                right,
-                logger,
-            )
-        else:
-            line("[REJECT] i terminated but j is not")
+        # i has terminated while j has not
+        if t_i is None:
+            # if j is repeated (0 or more) just consume it (j + 1)
+            # return step(i, j + 1) if is_repeated_b(t_j) else False
+            if is_repeated_b(t_j):
+                line("* i terminated but j is repeated")
+                return step(i, j + 1, indent + "-", left, right)
+            else:
+                line("[REJECT] i terminated but j is not")
+                return False
+        # j has terminated while i has not
+        if t_j is None:
+            # if i is repeated (0 or more) just consume it (i + 1)
+            # return step(i + 1, j) if is_repeated_a(t_i) else False
+            if is_repeated_a(t_i):
+                line("* j terminated but i is repeated")
+                return step(i + 1, j, indent + "-", left, right)
+            else:
+                line("[REJECT] j terminated but i is not")
+                return False
+        # break on mismatch
+        if not a_matches_b(t_i, t_j):
+            line("[REJECT] i is not subclass of j")
             return False
-    # j has terminated while i has not
-    if t_j is None:
-        # if i is repeated (0 or more) just consume it (i + 1)
-        # return step(i + 1, j) if is_repeated_a(t_i) else False
-        if is_repeated_a(t_i):
-            line("* j terminated but i is repeated")
-            return match_sequence(
-                i + 1,
-                j,
-                a_sequence,
-                b_sequence,
-                is_repeated_a,
-                is_repeated_b,
-                a_matches_b,
-                indent + "-",
-                left,
-                right,
-                logger,
-            )
-        else:
-            line("[REJECT] j terminated but i is not")
-            return False
-    # break on mismatch
-    if not a_matches_b(t_i, t_j):
-        line("[REJECT] i is not subclass of j")
+
+        # now consider all possible next steps
+        # steps = []
+        # if is_repeated_a(t_i):
+        #     steps += [(i + 1, j), (i, j + 1), (i + 1, j + 1)]
+        # else:
+        #     steps += [(i + 1, j + 1)]
+        #
+        # if is_repeated_b(t_j):
+        #     steps += [(i, j + 1), (i + 1, j), (i + 1, j + 1)]
+        # else:
+        #     steps += [(i + 1, j + 1)]
+        # steps = list(set(steps))
+        # if the other node, t_j, is repeated, we add a skip edge from (j - 1) to (j + 1)
+        # which is equivalent to moving from (i - 1, j - 1) to (i, j + 1)
+        # which means that if we were at node (j - 1), one of the possible steps is to jump
+        # to node (j + 1), or equivalently, if we are at node i and node j is repeated,
+        # we can stay at node i and just move to next node (j + 1)
+        t_i_steps = [i, i + 1] if is_repeated_a(t_i) or is_repeated_b(t_j) else [i + 1]
+        t_j_steps = [j, j + 1] if is_repeated_b(t_j) or is_repeated_a(t_i) else [j + 1]
+        # be careful not to stay at the same state where (i, j) = (i_step, j_step)
+        steps = [(i_step, j_step) for i_step in t_i_steps for j_step in t_j_steps if i_step != i or j_step != j]
+        line(f"* steps: {steps}")
+        for next_i, next_j in steps:
+            # we have found a match in one of the possible next steps
+            if step(next_i, next_j, indent + "-", left, right):
+                return True
+        # no matches found in any possible next step
         return False
 
-    # now consider all possible next steps
-    # steps = []
-    # if is_repeated_a(t_i):
-    #     steps += [(i + 1, j), (i, j + 1), (i + 1, j + 1)]
-    # else:
-    #     steps += [(i + 1, j + 1)]
-    #
-    # if is_repeated_b(t_j):
-    #     steps += [(i, j + 1), (i + 1, j), (i + 1, j + 1)]
-    # else:
-    #     steps += [(i + 1, j + 1)]
-    # steps = list(set(steps))
-    # if the other node, t_j, is repeated, we add a skip edge from (j - 1) to (j + 1)
-    # which is equivalent to moving from (i - 1, j - 1) to (i, j + 1)
-    # which means that if we were at node (j - 1), one of the possible steps is to jump
-    # to node (j + 1), or equivalently, if we are at node i and node j is repeated,
-    # we can stay at node i and just move to next node (j + 1)
-    t_i_steps = [i, i + 1] if is_repeated_a(t_i) or is_repeated_b(t_j) else [i + 1]
-    t_j_steps = [j, j + 1] if is_repeated_b(t_j) or is_repeated_a(t_i) else [j + 1]
-    # be careful not to stay at the same state where (i, j) = (i_step, j_step)
-    steps = [(i_step, j_step) for i_step in t_i_steps for j_step in t_j_steps if i_step != i or j_step != j]
-    line(f"* steps: {steps}")
-    for next_i, next_j in steps:
-        # we have found a match in one of the possible next steps
-        if match_sequence(
-            next_i,
-            next_j,
-            a_sequence,
-            b_sequence,
-            is_repeated_a,
-            is_repeated_b,
-            a_matches_b,
-            indent + "-",
-            left,
-            right,
-            logger,
-        ):
-            return True
-    # no matches found in any possible next step
-    return False
+    return step(0, 0, "", [], [])
