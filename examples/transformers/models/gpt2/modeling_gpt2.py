@@ -26,18 +26,19 @@ from collections import OrderedDict
 from dataclasses import dataclass
 from typing import Any, Callable, List, Optional, Tuple, cast
 
+from typedtensor import (
+    Dimension,
+    TypedTensor,
+    Z,
+)
+from typedtensor.torch import addmm
+
 import torch
 import torch.utils.checkpoint
 from torch import Tensor, nn
 from transformers import (
     GPT2Config,
     PreTrainedModel,
-)
-from typedtensor import (
-    Dimension,
-    TypedTensor,
-    Z,
-    addmm,
 )
 
 logger = logging.getLogger(__name__)

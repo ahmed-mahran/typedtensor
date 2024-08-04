@@ -1,4 +1,4 @@
-from .dimension import Concat, Dimension, Z, dimension
+from .dimension import Concat, Dimension, Rec, Z, dimension
 from .shape_info import (
     AbstractDimensionArgInfo,
     ConcatDimensionArgInfo,
@@ -8,4 +8,5 @@ from .shape_info import (
     ShapeInfo,
     UnboundAbstractDimensionArgInfo,
 )
-from .typed_tensor import TypedTensor, addmm, is_instance_of
+from .typed_tensor import TypedTensor, is_instance_of
+from . import torch
