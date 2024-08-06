@@ -96,7 +96,7 @@ class TypedTensor[DType: Tensor, *Dimensions](CaptureTypeArgs):
             return self._typed_args
         self._typed_args = _extract_typed_args(self._args, self.tensor)
         return self._typed_args
-    
+
     @property
     def shape(self) -> ShapeInfo:
         return self.typed_args[1]
@@ -233,6 +233,19 @@ class TypedTensor[DType: Tensor, *Dimensions](CaptureTypeArgs):
         ts[dim0] = d1
         ts[dim1] = d0
         return TypedTensor(cast(DType, me.tensor.transpose(dim0, dim1)), tuple([me.args[0]] + ts))
+
+    class _Permute:
+        def __init__(self, o):
+            self.o = o
+
+        def __getitem__[*Ps](self, tps: Tuple[*Ps]) -> TypedTensor[DType, *Ps]:
+            types = [tp for tp in tps if isclass(tp) and issubclass(tp, Dimension)]
+            dims = [self.o.dim[tp] for tp in types]
+            return TypedTensor(cast(DType, self.o.tensor.permute(dims)), (self.o.args[0],) + tuple(types))
+
+    @property
+    def permute(self):
+        return TypedTensor._Permute(self)
 
     @overload
     def size(self, dim: None = None) -> Size: ...
