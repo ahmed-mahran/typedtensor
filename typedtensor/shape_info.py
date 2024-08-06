@@ -10,7 +10,7 @@ from typing import Any, List, Optional, Tuple, Type, TypeGuard, TypeVarTuple
 
 from torch import Size, Tensor
 
-from .dimension import Concat, Dimension, Z
+from .dimension import Concat, Dimension, Rec, Z
 from .utils import _is_generic_type, _is_tensor_subclass, _is_type_var_of_bound, _Unpack_type, match_sequence
 
 logger = logging.getLogger(__name__)
@@ -66,6 +66,9 @@ class ExactDimensionLength(DimensionLength):
             return AtLeastDimensionLength(min_threshold=self.length + other.min_threshold)
         raise NotImplementedError(f"Unrecognized argument {other} of type {type(other)}")
 
+    def __repr__(self):
+        return str(self.value)
+
 
 class UnboundDimensionLength(DimensionLength):
     @property
@@ -87,6 +90,9 @@ class UnboundDimensionLength(DimensionLength):
             return AtLeastDimensionLength(min_threshold=other.min_threshold)
         raise NotImplementedError(f"Unrecognized argument {other} of type {type(other)}")
 
+    def __repr__(self):
+        return "_"
+
 
 @dataclass
 class AtLeastDimensionLength(DimensionLength):
@@ -107,6 +113,9 @@ class AtLeastDimensionLength(DimensionLength):
             return AtLeastDimensionLength(min_threshold=self.min_threshold + other.min_threshold)
         raise NotImplementedError(f"Unrecognized argument {other} of type {type(other)}")
 
+    def __repr__(self):
+        return f"_>={self.min_threshold}"
+
 
 ######################
 # Dimension Arg Info #
@@ -123,8 +132,16 @@ class DimensionArgInfo(ABC):
     def is_subclass(self, parent: DimensionArgInfo) -> bool:
         pass
 
+    @abstractmethod
+    def __eq__(self, other):
+        pass
+
 
 class NestableDimensionArgInfo(DimensionArgInfo, ABC):
+    pass
+
+
+class FunctorDimensionArgInfo(NestableDimensionArgInfo, ABC):
     pass
 
 
@@ -142,6 +159,14 @@ class ConcreteDimensionArgInfo(NestableDimensionArgInfo):
     def length(self):
         return ExactDimensionLength(value=self._length)
 
+    def __eq__(self, other):
+        return (
+            isinstance(other, ConcreteDimensionArgInfo)
+            and self.name == other.name
+            and self._length == other._length
+            and self.origin == other.origin
+        )
+
     def is_subclass(self, parent: DimensionArgInfo) -> bool:
         if isinstance(parent, ConcreteDimensionArgInfo):
             return issubclass(self.origin, parent.origin) and self.length == parent.length
@@ -153,6 +178,8 @@ class ConcreteDimensionArgInfo(NestableDimensionArgInfo):
             return self.is_subclass(parent.base)
         elif isinstance(parent, ConcatDimensionArgInfo):
             return False
+        elif isinstance(parent, RecDimensionArgInfo):
+            return self.is_subclass(parent.base)
         raise TypeError(f"Type {type(parent)} is not handled!")
 
     def __repr__(self):
@@ -168,6 +195,9 @@ class AbstractDimensionArgInfo(NestableDimensionArgInfo):
     def length(self):
         return UnboundDimensionLength()
 
+    def __eq__(self, other):
+        return isinstance(other, AbstractDimensionArgInfo) and self.name == other.name and self.origin == other.origin
+
     def is_subclass(self, parent: DimensionArgInfo) -> bool:
         if isinstance(parent, ConcreteDimensionArgInfo):
             return False
@@ -179,6 +209,8 @@ class AbstractDimensionArgInfo(NestableDimensionArgInfo):
             return self.is_subclass(parent.base)
         elif isinstance(parent, ConcatDimensionArgInfo):
             return self.is_subclass(parent.left) and self.is_subclass(parent.right)
+        elif isinstance(parent, RecDimensionArgInfo):
+            return self.is_subclass(parent.base)
         raise TypeError(f"Type {type(parent)} is not handled!")
 
     def __repr__(self):
@@ -193,6 +225,9 @@ class UnboundAbstractDimensionArgInfo(NestableDimensionArgInfo):
     def length(self):
         return UnboundDimensionLength()
 
+    def __eq__(self, other):
+        return isinstance(other, UnboundAbstractDimensionArgInfo) and self.name == other.name
+
     def is_subclass(self, parent: DimensionArgInfo) -> bool:
         if isinstance(parent, ConcreteDimensionArgInfo):
             return False
@@ -204,10 +239,15 @@ class UnboundAbstractDimensionArgInfo(NestableDimensionArgInfo):
             return self.is_subclass(parent.base)
         elif isinstance(parent, ConcatDimensionArgInfo):
             return self.is_subclass(parent.left) and self.is_subclass(parent.right)
+        elif isinstance(parent, RecDimensionArgInfo):
+            return self.is_subclass(parent.base)
         raise TypeError(f"Type {type(parent)} is not handled!")
 
     def __repr__(self):
         return f"{self.name}(_)"
+
+
+Unkown = UnboundAbstractDimensionArgInfo(name="Unkown")
 
 
 @dataclass
@@ -218,6 +258,9 @@ class RepeatedDimensionArgInfo(DimensionArgInfo):
     def length(self):
         return self.base.length
 
+    def __eq__(self, other):
+        return isinstance(other, RepeatedDimensionArgInfo) and self.base == other.base
+
     def is_subclass(self, parent: DimensionArgInfo) -> bool:
         return self.base.is_subclass(parent)
 
@@ -226,13 +269,16 @@ class RepeatedDimensionArgInfo(DimensionArgInfo):
 
 
 @dataclass
-class ConcatDimensionArgInfo(NestableDimensionArgInfo):
+class ConcatDimensionArgInfo(FunctorDimensionArgInfo):
     left: NestableDimensionArgInfo
     right: NestableDimensionArgInfo
 
     @property
     def length(self):
         return self.left.length + self.right.length
+
+    def __eq__(self, other):
+        return isinstance(other, ConcatDimensionArgInfo) and self.length == other.length and self.right == other.right
 
     def is_subclass(self, parent: DimensionArgInfo) -> bool:
         if isinstance(parent, ConcreteDimensionArgInfo):
@@ -245,10 +291,33 @@ class ConcatDimensionArgInfo(NestableDimensionArgInfo):
             return self.is_subclass(parent.base)
         elif isinstance(parent, ConcatDimensionArgInfo):
             return self.left.is_subclass(parent.left) and self.right.is_subclass(parent.right)
+        elif isinstance(parent, RecDimensionArgInfo):
+            return self.is_subclass(parent.base)
         raise TypeError(f"Type {type(parent)} is not handled!")
 
     def __repr__(self):
         return f"Concat[{self.left}, {self.right}]"
+
+
+@dataclass
+class RecDimensionArgInfo(FunctorDimensionArgInfo):
+    base: NestableDimensionArgInfo
+    func: FunctorDimensionArgInfo
+
+    @property
+    def length(self):
+        return self.base.length + self.func.length
+
+    def __eq__(self, other):
+        return isinstance(other, RecDimensionArgInfo) and self.base == other.base and self.func == other.func
+
+    def is_subclass(self, parent: DimensionArgInfo) -> bool:
+        if isinstance(parent, RecDimensionArgInfo):
+            return self.func.is_subclass(parent.func) and self.base.is_subclass(parent.base)
+        return self.base.is_subclass(parent)
+
+    def __repr__(self):
+        return f"Rec[{self.base}, {self.func}]"
 
 
 @dataclass
@@ -262,7 +331,7 @@ class ShapeInfo:
         def __getitem__[T: Dimension](self, tp: Type[T]):
             arg = _unpack_recognize_arg(tp)[0]
             for i, item in enumerate(self.o.args):
-                if arg == item:
+                if item.is_subclass(arg):
                     return i
             raise ValueError(f"Dimension {tp} doesn't exist in shape {self.o}")
 
@@ -288,6 +357,14 @@ class ShapeInfo:
                     return True
                 elif isinstance(a_length, AtLeastDimensionLength):
                     return a_length >= ExactDimensionLength(b)
+            elif isinstance(a, RecDimensionArgInfo):
+                a_length = a.length
+                if isinstance(a_length, ExactDimensionLength):
+                    return a_length == ExactDimensionLength(b)
+                elif isinstance(a_length, UnboundDimensionLength):
+                    return True
+                elif isinstance(a_length, AtLeastDimensionLength):
+                    return a_length >= ExactDimensionLength(b)
             raise TypeError(f"Unrecognized dimension arg {a}")
 
         return match_sequence(self.args, list(size), _is_repeated, lambda _: False, a_matches_b, logger)
@@ -298,8 +375,11 @@ class ShapeInfo:
 
 def _unpack_recognize_arg(arg: Any) -> List[DimensionArgInfo]:
     # [..., arg = Dimension, ...]
-    if arg == Dimension:
+    if arg is Dimension:
         return [AbstractDimensionArgInfo(name="Dimension", origin=Dimension)]
+    # [..., arg = Concat, ...]
+    elif arg is Concat:
+        return [ConcatDimensionArgInfo(left=Unkown, right=Unkown)]
     # [..., arg <= Dimension, ...]
     elif isclass(arg) and issubclass(arg, Dimension):
         # [..., arg <= Dimension(length=...), ...]
@@ -320,6 +400,13 @@ def _unpack_recognize_arg(arg: Any) -> List[DimensionArgInfo]:
         right = _unpack_recognize_arg(concat_args[1])[0]
         if isinstance(left, NestableDimensionArgInfo) and isinstance(right, NestableDimensionArgInfo):
             return [ConcatDimensionArgInfo(left=left, right=right)]
+    # [..., arg = Rec[A, T], ...]
+    elif _is_generic_type(arg, Rec):
+        rec_args = getattr(arg, "__args__")
+        base = _unpack_recognize_arg(rec_args[0])[0]
+        func = _unpack_recognize_arg(rec_args[1])[0]
+        if isinstance(base, NestableDimensionArgInfo) and isinstance(func, FunctorDimensionArgInfo):
+            return [RecDimensionArgInfo(base=base, func=func)]
     # [..., arg = Z[T], ...]
     elif _is_generic_type(arg, Z):
         # base = T = arg.__args__[0]

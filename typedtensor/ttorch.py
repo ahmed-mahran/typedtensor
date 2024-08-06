@@ -22,9 +22,17 @@ class _cat:
         def inner[DType: Tensor](
             xs: list[TypedTensor[DType, Z[Dimension], D, Z[Dimension]]],
         ) -> TypedTensor[DType, Z[Dimension], Rec[D, Concat], Z[Dimension]]:
-            return TypedTensor(cast(DType, torch.cat([x.tensor for x in xs])))
+            dim = xs[0].dim[tp]
+            args = list(xs[0].args)
+            args[dim + 1] = Rec[tp, Concat]
+            return TypedTensor[DType, Z[Dimension], Rec[D, Concat], Z[Dimension]](
+                cast(DType, torch.cat([x.tensor for x in xs], dim=dim)), tuple(args)
+            )
 
         return inner
 
-# cat[Seq](xs)
+
+"""
+cat[Seq](xs)
+"""
 cat = _cat()
