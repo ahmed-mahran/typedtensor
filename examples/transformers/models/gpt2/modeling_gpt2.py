@@ -31,7 +31,7 @@ from typedtensor import (
     TypedTensor,
     Z,
 )
-from typedtensor.torch import addmm
+from typedtensor.ttorch import addmm
 
 import torch
 import torch.utils.checkpoint

@@ -9,4 +9,4 @@ from .shape_info import (
     UnboundAbstractDimensionArgInfo,
 )
 from .typed_tensor import TypedTensor, is_instance_of
-from . import torch
+from . import ttorch
