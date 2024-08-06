@@ -26,16 +26,16 @@ from collections import OrderedDict
 from dataclasses import dataclass
 from typing import Any, Callable, List, Optional, Tuple, cast
 
+import torch
+import torch.utils.checkpoint
+from torch import Tensor, nn
 from typedtensor import (
     Dimension,
     TypedTensor,
     Z,
+    ttorch,
 )
-from typedtensor.ttorch import addmm
 
-import torch
-import torch.utils.checkpoint
-from torch import Tensor, nn
 from transformers import (
     GPT2Config,
     PreTrainedModel,
@@ -211,7 +211,7 @@ class GPT2Conv1D[DType: Tensor, D0, D1](nn.Module):
         args_out = x.args[:-1] + (d1,)
         x_as_2d_tensor = cast(DType, x.tensor.view(-1, x.size(-1)))
         x_as_2d = TypedTensor[DType, Z[Dimension], Dimension, D0](x_as_2d_tensor)
-        x_out_as_2d = addmm(self.bias, x_as_2d, self.weight_t)
+        x_out_as_2d = ttorch.addmm(self.bias, x_as_2d, self.weight_t)
         return TypedTensor(cast(DType, x_out_as_2d.tensor.view(size_out)), args_out)
 
 
@@ -562,10 +562,12 @@ class GPT2Attention[DType: Tensor](nn.Module):
         past_and_current_key: HeadsHiddenStatesTypedTensor[DType, PastSequenceDim]
         past_and_current_value: HeadsHiddenStatesTypedTensor[DType, PastSequenceDim]
         if layer_past is not None:
-            past_and_current_key = layer_past.key.transform(lambda t: cast(DType, torch.cat((t, key.tensor), dim=-2)))
-            past_and_current_value = layer_past.value.transform(
-                lambda t: cast(DType, torch.cat((t, value.tensor), dim=-2))
-            )
+            past_and_current_key = ttorch.cat[_SequenceDim](
+                [layer_past.key.as_z_d0_z[_SequenceDim], key.as_z_d0_z[_SequenceDim]]
+            ).asinstanceof[TypedTensor[DType, BatchDim, HeadDim, PastSequenceDim, HeadFeatureDim]]
+            past_and_current_value = ttorch.cat[_SequenceDim](
+                [layer_past.value.as_z_d0_z[_SequenceDim], value.as_z_d0_z[_SequenceDim]]
+            ).asinstanceof[TypedTensor[DType, BatchDim, HeadDim, PastSequenceDim, HeadFeatureDim]]
         else:
             past_and_current_key = key.asinstanceof[
                 TypedTensor[DType, BatchDim, HeadDim, PastSequenceDim, HeadFeatureDim]
