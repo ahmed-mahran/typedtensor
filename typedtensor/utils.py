@@ -60,6 +60,55 @@ class CaptureTypeArgs(ABC):
         pass
 
 
+# def function_capture_type_args_call[R, **P](fn: Callable[Concatenate[Tuple[Type, ...], P], R]):
+#     class _CaptureTypeArgs:
+#         def __getitem__(self, item):
+#             self.item = item
+#             return self
+
+#         def __call__(self, *args: P.args, **kwargs: P.kwargs) -> R:
+#             return fn(self.item, *args, **kwargs)
+
+#     return _CaptureTypeArgs()
+
+
+# def function_capture_type_args_getitem[R](fn: Callable[[Tuple[Type, ...]], R]):
+#     class _CaptureTypeArgs:
+#         def __getitem__(self, item):
+#             return fn(item)
+
+#     return _CaptureTypeArgs()
+
+
+# def method_capture_type_args_call[R, **P](fn: Callable[Concatenate[Any, Tuple[Type, ...], P], R]):
+#     class _CaptureTypeArgs:
+#         def __get__(self, instance, owner):
+#             self.instance = instance
+#             return self
+
+#         def __getitem__(self, item):
+#             self.item = item
+#             return self
+
+#         def __call__(self, *args: P.args, **kwargs: P.kwargs) -> R:
+#             return fn(self.instance, self.item, *args, **kwargs)
+
+#     return _CaptureTypeArgs()
+
+
+# def method_capture_type_args_getitem[I, **P, R](fn: Callable[Concatenate[I, P], R]):
+#     class _CaptureTypeArgs[II]:
+#         def __get__(self, instance: II, owner: Type[II]):
+#             self.instance = instance
+#             return self
+
+#         def __getitem__(self, *item: P.args, **kwargs: P.kwargs):
+#             args = item[0] if type(item[0]) is tuple else item
+#             return fn(cast(I, self.instance), *args, **kwargs)
+
+#     return _CaptureTypeArgs[I]()
+
+
 # Two sequences with non-repeating dimensions match if they have the same length and corresponding
 # entries at the same index match. Repeating dimensions adds complexity to the logic; we cannot
 # compare lengths of sequences to decide on matching. However, we can compare lengths of ordered

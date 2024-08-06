@@ -96,6 +96,14 @@ class TypedTensor[DType: Tensor, *Dimensions](CaptureTypeArgs):
             return self._typed_args
         self._typed_args = _extract_typed_args(self._args, self.tensor)
         return self._typed_args
+    
+    @property
+    def shape(self) -> ShapeInfo:
+        return self.typed_args[1]
+
+    @property
+    def dim(self):
+        return ShapeInfo._Dim(self.shape)
 
     @staticmethod
     def as_instance_of[T](t: TypedTensor[DType, *Dimensions], tp: Type[T]) -> T:
@@ -139,6 +147,19 @@ class TypedTensor[DType: Tensor, *Dimensions](CaptureTypeArgs):
         self: TypedTensor[T, *Dimensions],
     ) -> TypedTensor._As_Z_D0_D1[T]:
         return TypedTensor._As_Z_D0_D1[T](self)
+
+    class _As_Z_D0_Z[T: Tensor]:
+        def __init__(self, o: TypedTensor[T, *Dimensions]):
+            self.o = o
+
+        def __getitem__[D0](self, item: Type[D0]) -> TypedTensor[T, Z[Dimension], D0, Z[Dimension]]:
+            return self.o.asinstanceof[TypedTensor[T, Z[Dimension], D0, Z[Dimension]]]
+
+    @property
+    def as_z_d0_z[T: Tensor](
+        self: TypedTensor[T, *Dimensions],
+    ) -> TypedTensor._As_Z_D0_Z[T]:
+        return TypedTensor._As_Z_D0_Z[T](self)
 
     class _As_Z_D0_Z_D1_Z[T: Tensor]:
         def __init__(self, o: TypedTensor[T, *Dimensions]):

@@ -255,6 +255,21 @@ class ConcatDimensionArgInfo(NestableDimensionArgInfo):
 class ShapeInfo:
     args: List[DimensionArgInfo]
 
+    class _Dim:
+        def __init__(self, o):
+            self.o = o
+
+        def __getitem__[T: Dimension](self, tp: Type[T]):
+            arg = _unpack_recognize_arg(tp)[0]
+            for i, item in enumerate(self.o.args):
+                if arg == item:
+                    return i
+            raise ValueError(f"Dimension {tp} doesn't exist in shape {self.o}")
+
+    @property
+    def dim(self):
+        return ShapeInfo._Dim(self)
+
     def matches(self, size: Size) -> bool:
         def a_matches_b(a: DimensionArgInfo, b: int) -> bool:
             if isinstance(a, ConcreteDimensionArgInfo):
@@ -281,6 +296,57 @@ class ShapeInfo:
         return " x ".join(map(str, self.args))
 
 
+def _unpack_recognize_arg(arg: Any) -> List[DimensionArgInfo]:
+    # [..., arg = Dimension, ...]
+    if arg == Dimension:
+        return [AbstractDimensionArgInfo(name="Dimension", origin=Dimension)]
+    # [..., arg <= Dimension, ...]
+    elif isclass(arg) and issubclass(arg, Dimension):
+        # [..., arg <= Dimension(length=...), ...]
+        if hasattr(arg, "length"):
+            return [ConcreteDimensionArgInfo(name=arg.__name__, length=arg.length, origin=arg)]
+        else:
+            return [AbstractDimensionArgInfo(name=arg.__name__, origin=arg)]
+    # [..., arg = T: bound <= Dimension, ...]
+    elif _is_type_var_of_bound(arg, Dimension) and arg.__bound__ is not None:
+        return [AbstractDimensionArgInfo(name=arg.__name__, origin=arg.__bound__)]
+    # [..., arg = T: bound = None, ...]
+    elif _is_type_var_of_bound(arg, None):
+        return [UnboundAbstractDimensionArgInfo(name=arg.__name__)]
+    # [..., arg = Concat[L, R], ...]
+    elif _is_generic_type(arg, Concat):
+        concat_args = getattr(arg, "__args__")
+        left = _unpack_recognize_arg(concat_args[0])[0]
+        right = _unpack_recognize_arg(concat_args[1])[0]
+        if isinstance(left, NestableDimensionArgInfo) and isinstance(right, NestableDimensionArgInfo):
+            return [ConcatDimensionArgInfo(left=left, right=right)]
+    # [..., arg = Z[T], ...]
+    elif _is_generic_type(arg, Z):
+        # base = T = arg.__args__[0]
+        base = _unpack_recognize_arg(getattr(arg, "__args__")[0])[0]
+        if isinstance(base, NestableDimensionArgInfo):
+            return [RepeatedDimensionArgInfo(base)]
+    # [..., arg = *Ts | *Tuple[...], ...]
+    elif issubclass(type(arg), _Unpack_type) or issubclass(type(arg), types.GenericAlias):
+        unpacked = getattr(arg, "__args__")[0] if issubclass(type(arg), _Unpack_type) else arg
+        if isinstance(unpacked, TypeVarTuple):
+            return [RepeatedDimensionArgInfo(UnboundAbstractDimensionArgInfo())]
+        # unpacked is Tuple[T, ...] | Tuple[A, B, ...]
+        if hasattr(unpacked, "__origin__") and getattr(unpacked, "__origin__") is tuple:
+            # unpacked is Tuple[T, ...] i.e. T zero or more
+            if len(getattr(unpacked, "__args__")) == 2 and getattr(unpacked, "__args__")[1] is ...:
+                # base = T
+                base = _unpack_recognize_arg(getattr(unpacked, "__args__")[0])[0]
+                if isinstance(base, NestableDimensionArgInfo):
+                    return [RepeatedDimensionArgInfo(base)]
+            # unpacked is Tuple[A, B, ...] i.e. a bounded tuple of types
+            r = []
+            for a in getattr(unpacked, "__args__"):
+                r.extend(_unpack_recognize_arg(a))
+            return r
+    raise TypeError(f"Unrecognized shape parameter {arg} of type {type(arg)}")
+
+
 def _extract_typed_args[DType: Tensor](
     _args: Optional[Tuple[Any, ...]], tensor: Optional[DType] = None
 ) -> Tuple[Type[Tensor], ShapeInfo]:
@@ -303,56 +369,6 @@ def _extract_typed_args[DType: Tensor](
         d_type = arg_0
     else:
         raise TypeError(f"TypedTensor data type must be <= torch.Tensor but got {arg_0} of type {type(arg_0)}")
-
-    def _unpack_recognize_arg(arg: Any) -> List[DimensionArgInfo]:
-        # [..., arg = Dimension, ...]
-        if arg == Dimension:
-            return [AbstractDimensionArgInfo(name="Dimension", origin=Dimension)]
-        # [..., arg <= Dimension, ...]
-        elif isclass(arg) and issubclass(arg, Dimension):
-            # [..., arg <= Dimension(length=...), ...]
-            if hasattr(arg, "length"):
-                return [ConcreteDimensionArgInfo(name=arg.__name__, length=arg.length, origin=arg)]
-            else:
-                return [AbstractDimensionArgInfo(name=arg.__name__, origin=arg)]
-        # [..., arg = T: bound <= Dimension, ...]
-        elif _is_type_var_of_bound(arg, Dimension) and arg.__bound__ is not None:
-            return [AbstractDimensionArgInfo(name=arg.__name__, origin=arg.__bound__)]
-        # [..., arg = T: bound = None, ...]
-        elif _is_type_var_of_bound(arg, None):
-            return [UnboundAbstractDimensionArgInfo(name=arg.__name__)]
-        # [..., arg = Concat[L, R], ...]
-        elif _is_generic_type(arg, Concat):
-            concat_args = getattr(arg, "__args__")
-            left = _unpack_recognize_arg(concat_args[0])[0]
-            right = _unpack_recognize_arg(concat_args[1])[0]
-            if isinstance(left, NestableDimensionArgInfo) and isinstance(right, NestableDimensionArgInfo):
-                return [ConcatDimensionArgInfo(left=left, right=right)]
-        # [..., arg = Z[T], ...]
-        elif _is_generic_type(arg, Z):
-            # base = T = arg.__args__[0]
-            base = _unpack_recognize_arg(getattr(arg, "__args__")[0])[0]
-            if isinstance(base, NestableDimensionArgInfo):
-                return [RepeatedDimensionArgInfo(base)]
-        # [..., arg = *Ts | *Tuple[...], ...]
-        elif issubclass(type(arg), _Unpack_type) or issubclass(type(arg), types.GenericAlias):
-            unpacked = getattr(arg, "__args__")[0] if issubclass(type(arg), _Unpack_type) else arg
-            if isinstance(unpacked, TypeVarTuple):
-                return [RepeatedDimensionArgInfo(UnboundAbstractDimensionArgInfo())]
-            # unpacked is Tuple[T, ...] | Tuple[A, B, ...]
-            if hasattr(unpacked, "__origin__") and getattr(unpacked, "__origin__") is tuple:
-                # unpacked is Tuple[T, ...] i.e. T zero or more
-                if len(getattr(unpacked, "__args__")) == 2 and getattr(unpacked, "__args__")[1] is ...:
-                    # base = T
-                    base = _unpack_recognize_arg(getattr(unpacked, "__args__")[0])[0]
-                    if isinstance(base, NestableDimensionArgInfo):
-                        return [RepeatedDimensionArgInfo(base)]
-                # unpacked is Tuple[A, B, ...] i.e. a bounded tuple of types
-                r = []
-                for a in getattr(unpacked, "__args__"):
-                    r.extend(_unpack_recognize_arg(a))
-                return r
-        raise TypeError(f"Unrecognized shape parameter {arg} of type {type(arg)}")
 
     shape_args = []
     for arg in all_args[1:]:
