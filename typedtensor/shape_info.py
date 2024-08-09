@@ -21,6 +21,11 @@ logger = logging.getLogger(__name__)
 
 
 class DimensionLength(ABC):
+    @property
+    @abstractmethod
+    def length(self) -> int:
+        pass
+
     @abstractmethod
     def __eq__(self, other):
         pass
@@ -97,6 +102,10 @@ class UnboundDimensionLength(DimensionLength):
 @dataclass
 class AtLeastDimensionLength(DimensionLength):
     min_threshold: int
+
+    @property
+    def length(self) -> int:
+        return math.inf  # type: ignore
 
     def __eq__(self, other):
         return isinstance(other, UnboundDimensionLength) or isinstance(other, AtLeastDimensionLength)
@@ -346,6 +355,9 @@ class ShapeInfo:
     def dim(self):
         return ShapeInfo._Dim(self)
 
+    def size(self) -> Size:
+        return Size([a.value if isinstance(a, ExactDimensionLength) else -1 for a in self.args])
+
     def matches(self, size: Size) -> bool:
         def a_matches_b(a: DimensionArgInfo, b: int) -> bool:
             if isinstance(a, ConcreteDimensionArgInfo):
@@ -464,16 +476,24 @@ def _extract_typed_args[DType: Tensor](
     else:
         raise TypeError(f"TypedTensor data type must be <= torch.Tensor but got {arg_0} of type {type(arg_0)}")
 
-    shape_args = []
-    for arg in all_args[1:]:
-        shape_args.extend(_unpack_recognize_arg(arg))
+    shape_info = _extract_typed_shape_args(all_args[1:])
 
-    shape_info = ShapeInfo(shape_args)
     if tensor is not None:
         if not shape_info.matches(tensor.size()):
             raise TypeError(f"Tensor size {tensor.size()} did not match shape arguments {shape_info}")
 
     return d_type, shape_info
+
+
+def _extract_typed_shape_args(_args: Optional[Tuple[Any, ...]]) -> ShapeInfo:
+    if _args is None or len(_args) == 0:
+        raise TypeError("Cannot verify shape of tensor; no arguments provided")
+
+    shape_args = []
+    for arg in _args:
+        shape_args.extend(_unpack_recognize_arg(arg))
+
+    return ShapeInfo(shape_args)
 
 
 def _is_repeated(

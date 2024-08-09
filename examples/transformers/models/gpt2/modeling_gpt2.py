@@ -28,7 +28,7 @@ from typing import Any, Callable, List, Optional, Tuple, cast
 
 import torch
 import torch.utils.checkpoint
-from torch import Tensor, nn
+from torch import Size, Tensor, nn
 from typedtensor import Dimension, Shape, TypedTensor, Z, ttorch
 
 from transformers import (
@@ -203,11 +203,10 @@ class GPT2Conv1D[DType: Tensor, D0, D1](nn.Module):
     def forward(self, x: TypedTensor[DType, Z[Dimension], D0]) -> TypedTensor[DType, Z[Dimension], D1]:
         dtype, d0, d1 = self.__orig_class__.__args__
         size_out = x.size()[:-1] + (self.output_length,)
-        args_out = x.args[:-1] + (d1,)
-        x_as_2d_tensor = cast(DType, x.tensor.view(-1, x.size(-1)))
-        x_as_2d = TypedTensor[DType, Z[Dimension], Dimension, D0](x_as_2d_tensor)
+        shape_out = x.args[1:-1] + (d1,)
+        x_as_2d = x.view[Shape[Z[Dimension], Dimension, D0]](Size((-1, x.size(-1))))
         x_out_as_2d = ttorch.addmm(self.bias, x_as_2d, self.weight_t)
-        return TypedTensor(cast(DType, x_out_as_2d.tensor.view(size_out)), args_out)
+        return x_out_as_2d.view(Shape[Z[Dimension], D1], Size(size_out), shape_out)
 
 
 class GPT2MlpGELUActivation[DType: Tensor](nn.Module):
@@ -505,8 +504,7 @@ class GPT2Attention[DType: Tensor](nn.Module):
         Splits hidden_size dim into attn_head_size and num_heads
         """
         new_shape = tensor.size()[:-1] + (num_heads, attn_head_size)
-        args = tensor.args[:-1] + (HeadDim, HeadFeatureDim)
-        x = TypedTensor[DType, BatchDim, SequenceDim, HeadDim, HeadFeatureDim](tensor.tensor.view(new_shape), args)
+        x = tensor.view[Shape[BatchDim, SequenceDim, HeadDim, HeadFeatureDim]](Size(new_shape))
         return x.permute[Shape[BatchDim, HeadDim, SequenceDim, HeadFeatureDim]]
 
     def _merge_heads(
@@ -517,8 +515,7 @@ class GPT2Attention[DType: Tensor](nn.Module):
         """
         x = tensor.permute[Shape[BatchDim, SequenceDim, HeadDim, HeadFeatureDim]].contiguous()
         new_shape = x.size()[:-2] + (num_heads * attn_head_size,)
-        args = x.args[:-2] + (FeatureDim,)
-        return TypedTensor[DType, BatchDim, SequenceDim, FeatureDim](x.tensor.view(new_shape), args)
+        return x.view[Shape[BatchDim, SequenceDim, FeatureDim]](Size(new_shape))
 
     def forward(
         self,

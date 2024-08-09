@@ -8,7 +8,14 @@ import torch
 from torch import Size, Tensor
 
 from .dimension import Dimension, Z
-from .shape_info import DimensionArgInfo, ShapeArgs, ShapeInfo, _extract_typed_args, _is_repeated
+from .shape_info import (
+    DimensionArgInfo,
+    ShapeArgs,
+    ShapeInfo,
+    _extract_typed_args,
+    _extract_typed_shape_args,
+    _is_repeated,
+)
 from .utils import CaptureTypeArgs, _is_tensor_subclass, _is_type_var_of_bound, match_sequence
 
 logger = logging.getLogger(__name__)
@@ -248,6 +255,36 @@ class TypedTensor[DType: Tensor, *Dimensions](CaptureTypeArgs):
     def permute(self):
         return TypedTensor._Permute[DType](self)
 
+    class _View[_DType: Tensor]:
+        def __init__(self, o):
+            self.o = o
+
+        def __getitem__[*Vs](self, shape: ShapeArgs[*Vs]):
+            def inner(size: Optional[Size] = None) -> TypedTensor[_DType, *Vs]:
+                return self(shape, size)
+
+            return inner
+
+        def __call__[*Vs](
+            self,
+            shape: ShapeArgs[*Vs],
+            size: Optional[Size] = None,
+            types: Optional[Tuple[Type[Dimension], ...]] = None,
+        ) -> TypedTensor[_DType, *Vs]:
+            if types is None:
+                tps = getattr(shape, "__args__")
+                types = tuple([tp for tp in tps if isclass(tp) and issubclass(tp, Dimension)])
+            if size is None:
+                shape_info = _extract_typed_shape_args(types)
+                size = shape_info.size()
+                if sum([1 if s < 0 else 0 for s in size]) > 1:
+                    raise TypeError("At most one dimension can be abstract or otherwise provide size argument")
+            return TypedTensor(cast(_DType, self.o.tensor.view(size)), (self.o.args[0],) + types)
+
+    @property
+    def view(self):
+        return TypedTensor._View[DType](self)
+
     @overload
     def size(self, dim: None = None) -> Size: ...
 
@@ -267,7 +304,7 @@ class TypedTensor[DType: Tensor, *Dimensions](CaptureTypeArgs):
 
     def to(self, *args, **kwargs):
         return self.copy_with_tensor(self.tensor.to(*args, **kwargs))
-    
+
     def contiguous(self, *args, **kwargs):
         return self.copy_with_tensor(self.tensor.contiguous(*args, **kwargs))
 
