@@ -330,7 +330,10 @@ class RecDimensionArgInfo(FunctorDimensionArgInfo):
 
 
 class Shape[*Ds]:
-    pass
+    @staticmethod
+    def types_from(shape: ShapeArgs[*Ds]) -> Tuple[Type[Dimension], ...]:
+        tps = getattr(shape, "__args__")
+        return tuple([tp for tp in tps if isclass(tp) and issubclass(tp, Dimension)])
 
 
 type ShapeArgs[*Ds] = Type[Shape[*Ds]]

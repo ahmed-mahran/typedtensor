@@ -10,6 +10,7 @@ from torch import Size, Tensor
 from .dimension import Dimension, Z
 from .shape_info import (
     DimensionArgInfo,
+    Shape,
     ShapeArgs,
     ShapeInfo,
     _extract_typed_args,
@@ -129,6 +130,19 @@ class TypedTensor[DType: Tensor, *Dimensions](CaptureTypeArgs):
     def asinstanceof(self) -> TypedTensor._AsInstanceOf:
         return TypedTensor._AsInstanceOf(self)
 
+    class _Shaped[_DType: Tensor]:
+        def __init__(self, o: TypedTensor[_DType, *Dimensions]):
+            self.o = o
+
+        def __getitem__[*Ds](self, shape: ShapeArgs[*Ds]) -> TypedTensor[_DType, *Ds]:
+            return TypedTensor(cast(_DType, self.o.tensor), (self.o.args[0],) + Shape.types_from(shape))
+
+    @property
+    def shaped[T: Tensor](
+        self: TypedTensor[T, *Dimensions],
+    ) -> TypedTensor._Shaped[T]:
+        return TypedTensor._Shaped[T](self)
+
     class _As_Z_D0[T: Tensor]:
         def __init__(self, o: TypedTensor[T, *Dimensions]):
             self.o = o
@@ -246,8 +260,7 @@ class TypedTensor[DType: Tensor, *Dimensions](CaptureTypeArgs):
             self.o = o
 
         def __getitem__[*Ps](self, shape: ShapeArgs[*Ps]) -> TypedTensor[_DType, *Ps]:
-            tps = getattr(shape, "__args__")
-            types = [tp for tp in tps if isclass(tp) and issubclass(tp, Dimension)]
+            types = Shape.types_from(shape)
             dims = [self.o.dim[tp] for tp in types]
             return TypedTensor(cast(_DType, self.o.tensor.permute(dims)), (self.o.args[0],) + tuple(types))
 
@@ -272,8 +285,7 @@ class TypedTensor[DType: Tensor, *Dimensions](CaptureTypeArgs):
             types: Optional[Tuple[Type[Dimension], ...]] = None,
         ) -> TypedTensor[_DType, *Vs]:
             if types is None:
-                tps = getattr(shape, "__args__")
-                types = tuple([tp for tp in tps if isclass(tp) and issubclass(tp, Dimension)])
+                types = Shape.types_from(shape)
             if size is None:
                 shape_info = _extract_typed_shape_args(types)
                 size = shape_info.size()
