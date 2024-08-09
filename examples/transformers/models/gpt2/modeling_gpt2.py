@@ -28,9 +28,9 @@ from typing import Any, Callable, List, Optional, Tuple, cast
 
 from typedtensor import Dimension, Shape, TypedTensor, Z
 from typedtensor import torch as ttorch
+from typedtensor.torch import nn as tnn
 
 import torch
-import torch.utils.checkpoint
 from torch import Size, Tensor, nn
 from transformers import (
     GPT2Config,
@@ -181,35 +181,6 @@ class CausalLMOutputWithCrossAttentions[DType: Tensor](ModelOutput):
     cross_attentions: Optional[Tuple[HeadsAttentionTypedTensor[DType, SequenceDim, PastSequenceDim], ...]] = None
 
 
-class GPT2Conv1D[DType: Tensor, D0, D1](nn.Module):
-    """
-    1D-convolutional layer as defined by Radford et al. for OpenAI GPT (and also used in GPT-2).
-
-    Basically works like a linear layer but the weights are transposed.
-
-    Args:
-        input_length (`int`): The number of input features.
-        output_length (`int`): The number of output features.
-    """
-
-    def __init__(self, input_length: int, output_length: int):
-        super().__init__()
-        self.output_length = output_length
-        self.weight = nn.Parameter(torch.empty(input_length, output_length))
-        self.bias = nn.Parameter(torch.zeros(output_length))
-        nn.init.normal_(self.weight, std=0.02)
-
-        self.weight_t = TypedTensor[DType, Z[Dimension], D0, D1](cast(DType, self.weight))
-
-    def forward(self, x: TypedTensor[DType, Z[Dimension], D0]) -> TypedTensor[DType, Z[Dimension], D1]:
-        dtype, d0, d1 = self.__orig_class__.__args__
-        size_out = x.size()[:-1] + (self.output_length,)
-        shape_out = x.args[1:-1] + (d1,)
-        x_as_2d = x.view[Shape[Z[Dimension], Dimension, D0]](Size((-1, x.size(-1))))
-        x_out_as_2d = ttorch.addmm(self.bias, x_as_2d, self.weight_t)
-        return x_out_as_2d.view(Shape[Z[Dimension], D1], Size(size_out), shape_out)
-
-
 class GPT2MlpGELUActivation[DType: Tensor](nn.Module):
     """
     Original Implementation of the GELU activation function in Google BERT repo when initially created. For
@@ -259,7 +230,7 @@ class GPT2QueryKeyValueProjectionBase[DType: Tensor](nn.Module, abc.ABC):
 class GPT2QueryKeyValueProjection[DType: Tensor](GPT2QueryKeyValueProjectionBase[DType]):
     def __init__(self, embed_dim: int, split_size: int):
         super().__init__(embed_dim, split_size)
-        self.c_attn = GPT2Conv1D[DType, FeatureDim, TribbleFeatureDim](
+        self.c_attn = tnn.Conv1D[DType, FeatureDim, TribbleFeatureDim](
             input_length=self.embed_dim, output_length=3 * self.embed_dim
         )
 
@@ -280,10 +251,10 @@ class GPT2QueryKeyValueProjection[DType: Tensor](GPT2QueryKeyValueProjectionBase
 class GPT2QueryKeyValueCrossAttentionProjection[DType: Tensor](GPT2QueryKeyValueProjectionBase[DType]):
     def __init__(self, embed_dim: int, split_size: int):
         super().__init__(embed_dim, split_size)
-        self.c_attn = GPT2Conv1D[DType, FeatureDim, DoubleFeatureDim](
+        self.c_attn = tnn.Conv1D[DType, FeatureDim, DoubleFeatureDim](
             input_length=self.embed_dim, output_length=2 * self.embed_dim
         )
-        self.q_attn = GPT2Conv1D[DType, FeatureDim, FeatureDim](
+        self.q_attn = tnn.Conv1D[DType, FeatureDim, FeatureDim](
             input_length=self.embed_dim, output_length=self.embed_dim
         )
 
@@ -342,7 +313,7 @@ class GPT2Attention[DType: Tensor](nn.Module):
         else:
             c_attn = GPT2QueryKeyValueProjection[DType](embed_dim=self.embed_dim, split_size=self.split_size)
         self.c_attn = c_attn
-        self.c_proj = GPT2Conv1D[DType, FeatureDim, FeatureDim](
+        self.c_proj = tnn.Conv1D[DType, FeatureDim, FeatureDim](
             input_length=self.embed_dim, output_length=self.embed_dim
         )
 
@@ -592,8 +563,8 @@ class GPT2Attention[DType: Tensor](nn.Module):
 class GPT2MLP[DType: Tensor, Inner, D](nn.Module):
     def __init__(self, intermediate_size: int, embed_dim: int):
         super().__init__()
-        self.c_fc = GPT2Conv1D[DType, D, Inner](input_length=embed_dim, output_length=intermediate_size)
-        self.c_proj = GPT2Conv1D[DType, Inner, D](input_length=intermediate_size, output_length=embed_dim)
+        self.c_fc = tnn.Conv1D[DType, D, Inner](input_length=embed_dim, output_length=intermediate_size)
+        self.c_proj = tnn.Conv1D[DType, Inner, D](input_length=intermediate_size, output_length=embed_dim)
         self.act = GPT2MlpGELUActivation[DType]()
 
     def forward(self, hidden_states: TypedTensor[DType, Z[Dimension], D]) -> TypedTensor[DType, Z[Dimension], D]:
@@ -613,30 +584,19 @@ class GPT2BlockOutput[DType: Tensor]:
     cross_attentions: Optional[HeadsAttentionTypedTensor[DType, SequenceDim, PastSequenceDim]]
 
 
-class GPT2LayerNorm[DType: Tensor, D0](nn.Module):
-    def __init__(self, layer_norm: nn.LayerNorm):
-        super().__init__()
-        self.ln = layer_norm
-
-    def forward[*Ds](self, x: TypedTensor[DType, *Ds, D0]) -> TypedTensor[DType, *Ds, D0]:
-        return x.transform(lambda t: cast(DType, self.ln.forward(t)))
-
-
 class GPT2Block[DType: Tensor](nn.Module):
     def __init__(self, config: GPT2Config, layer_idx: Optional[int] = None):
         super().__init__()
         hidden_size = config.hidden_size
         inner_dim = config.n_inner if config.n_inner is not None else 4 * hidden_size
 
-        self.ln_1 = GPT2LayerNorm[DType, FeatureDim](nn.LayerNorm(hidden_size, eps=config.layer_norm_epsilon))
+        self.ln_1 = tnn.LayerNorm[DType, FeatureDim](hidden_size, eps=config.layer_norm_epsilon)
         self.attn = GPT2Attention[DType](config=config, layer_idx=layer_idx)
-        self.ln_2 = GPT2LayerNorm[DType, FeatureDim](nn.LayerNorm(hidden_size, eps=config.layer_norm_epsilon))
+        self.ln_2 = tnn.LayerNorm[DType, FeatureDim](hidden_size, eps=config.layer_norm_epsilon)
 
         if config.add_cross_attention:
             self.crossattention = GPT2Attention[DType](config=config, is_cross_attention=True, layer_idx=layer_idx)
-            self.ln_cross_attn = GPT2LayerNorm[DType, FeatureDim](
-                nn.LayerNorm(hidden_size, eps=config.layer_norm_epsilon)
-            )
+            self.ln_cross_attn = tnn.LayerNorm[DType, FeatureDim](hidden_size, eps=config.layer_norm_epsilon)
 
         class InnerDim(Dimension, length=inner_dim):
             pass  # noqa E701
@@ -737,14 +697,14 @@ class GPT2PreTrainedModel[DType: Tensor](PreTrainedModel):
 
     def _init_weights(self, module):
         """Initialize the weights."""
-        if isinstance(module, GPT2Conv1D):
+        if isinstance(module, tnn.Conv1D):
             # Slightly different from the TF version which uses truncated_normal for initialization
             # cf https://github.com/pytorch/pytorch/pull/5617
             module.weight.data.normal_(mean=0.0, std=self.config.initializer_range)
             module.weight_t.tensor = module.weight
             if module.bias is not None:
                 module.bias.data.zero_()
-        elif isinstance(module, GPT2Linear):
+        elif isinstance(module, tnn.Linear):
             # Slightly different from the TF version which uses truncated_normal for initialization
             # cf https://github.com/pytorch/pytorch/pull/5617
             module.linear.weight.data.normal_(mean=0.0, std=self.config.initializer_range)
@@ -756,7 +716,7 @@ class GPT2PreTrainedModel[DType: Tensor](PreTrainedModel):
         #     module.weight.data.normal_(mean=0.0, std=self.config.initializer_range)
         #     if module.bias is not None:
         #         module.bias.data.zero_()
-        elif isinstance(module, GPT2Embedding):
+        elif isinstance(module, tnn.Embedding):
             module.embedding.weight.data.normal_(mean=0.0, std=self.config.initializer_range)
             if module.embedding.padding_idx is not None:
                 module.embedding.weight.data[module.embedding.padding_idx].zero_()
@@ -764,7 +724,7 @@ class GPT2PreTrainedModel[DType: Tensor](PreTrainedModel):
         #     module.weight.data.normal_(mean=0.0, std=self.config.initializer_range)
         #     if module.padding_idx is not None:
         #         module.weight.data[module.padding_idx].zero_()
-        elif isinstance(module, GPT2LayerNorm):
+        elif isinstance(module, tnn.LayerNorm):
             module.ln.bias.data.zero_()
             module.ln.weight.data.fill_(1.0)
         # elif isinstance(module, nn.LayerNorm):
@@ -783,37 +743,18 @@ class GPT2PreTrainedModel[DType: Tensor](PreTrainedModel):
                 p.data.normal_(mean=0.0, std=(self.config.initializer_range / math.sqrt(2 * self.config.n_layer)))
 
 
-class GPT2Embedding[DType: Tensor](nn.Module):
-    def __init__(self, embedding: nn.Embedding):
-        super().__init__()
-        self.embedding = embedding
-
-    def forward(self, x: IdsTypedTensor) -> HiddenStatesTypedTensor[DType]:
-        return TypedTensor[DType, BatchDim, SequenceDim, FeatureDim](cast(DType, self.embedding.forward(x.tensor)))
-
-
-class GPT2Linear[DType: Tensor, D0, D1](nn.Module):
-    def __init__(self, linear: nn.Linear):
-        super().__init__()
-        self.linear = linear
-
-    def forward[*Ds](self, x: TypedTensor[DType, *Ds, D0]) -> TypedTensor[DType, *Ds, D1]:
-        dtype, d0, d1 = self.__orig_class__.__args__
-        return TypedTensor(cast(DType, self.linear(x.tensor)), x.args[:-1] + (d1,))
-
-
 class GPT2Model[DType: Tensor](GPT2PreTrainedModel[DType]):
     def __init__(self, config: GPT2Config):
         super().__init__(config)
 
         self.embed_dim = config.hidden_size
 
-        self.wte = GPT2Embedding[DType](nn.Embedding(config.vocab_size, self.embed_dim))
-        self.wpe = GPT2Embedding[DType](nn.Embedding(config.max_position_embeddings, self.embed_dim))
+        self.wte = tnn.Embedding[DType, SequenceDim, FeatureDim](config.vocab_size, self.embed_dim)
+        self.wpe = tnn.Embedding[DType, SequenceDim, FeatureDim](config.max_position_embeddings, self.embed_dim)
 
         self.hs = [GPT2Block[DType](config, layer_idx=i) for i in range(config.num_hidden_layers)]
         self.h = nn.ModuleList(self.hs)
-        self.ln_f = GPT2LayerNorm[DType, FeatureDim](nn.LayerNorm(self.embed_dim, eps=config.layer_norm_epsilon))
+        self.ln_f = tnn.LayerNorm[DType, FeatureDim](self.embed_dim, eps=config.layer_norm_epsilon)
 
         # Initialize weights and apply final processing
         self.post_init()
@@ -879,10 +820,14 @@ class GPT2Model[DType: Tensor](GPT2PreTrainedModel[DType]):
 
         if inputs_embeds is None:
             if input_ids is not None:
-                inputs_embeds = self.wte.forward(input_ids)
+                inputs_embeds = self.wte.forward(input_ids.as_z_d0[SequenceDim]).shaped[
+                    Shape[BatchDim, SequenceDim, FeatureDim]
+                ]
             else:
                 raise ValueError()
-        position_embeds = self.wpe.forward(position_ids)
+        position_embeds = self.wpe.forward(position_ids.as_z_d0[SequenceDim]).shaped[
+            Shape[BatchDim, SequenceDim, FeatureDim]
+        ]
         hidden_states = inputs_embeds + cast(DType, position_embeds.tensor)
 
         # Attention mask.
@@ -922,7 +867,9 @@ class GPT2Model[DType: Tensor](GPT2PreTrainedModel[DType]):
         _head_mask = self.get_head_mask(head_mask, self.config.n_layer)
 
         if token_type_ids is not None:
-            token_type_embeds = self.wte.forward(token_type_ids)
+            token_type_embeds = self.wte.forward(token_type_ids.as_z_d0[SequenceDim]).shaped[
+                Shape[BatchDim, SequenceDim, FeatureDim]
+            ]
             hidden_states = hidden_states + token_type_embeds.tensor
 
         # output_shape = (-1,) + input_shape[1:] + (hidden_states.size(-1),)
@@ -982,7 +929,7 @@ class GPT2LMHeadModel[DType: Tensor](GPT2PreTrainedModel[DType]):
     def __init__(self, config: GPT2Config):
         super().__init__(config)
         self.transformer = GPT2Model[DType](config)
-        self.lm_head = GPT2Linear[DType, FeatureDim, VocabDim](nn.Linear(config.n_embd, config.vocab_size, bias=False))
+        self.lm_head = tnn.Linear[DType, FeatureDim, VocabDim](config.n_embd, config.vocab_size, bias=False)
 
         # Initialize weights and apply final processing
         self.post_init()
