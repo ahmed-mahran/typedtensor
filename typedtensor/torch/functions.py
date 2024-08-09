@@ -3,8 +3,8 @@ from typing import Type, cast
 import torch
 from torch import Tensor
 
-from .dimension import Concat, Dimension, Rec, Z
-from .typed_tensor import TypedTensor
+from ..dimension import Concat, Dimension, Rec, Z
+from ..typed_tensor import TypedTensor
 
 
 def addmm[DType: Tensor, *Ds, D0, D1, D2](

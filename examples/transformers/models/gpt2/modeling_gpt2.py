@@ -26,11 +26,12 @@ from collections import OrderedDict
 from dataclasses import dataclass
 from typing import Any, Callable, List, Optional, Tuple, cast
 
+from typedtensor import Dimension, Shape, TypedTensor, Z
+from typedtensor import torch as ttorch
+
 import torch
 import torch.utils.checkpoint
 from torch import Size, Tensor, nn
-from typedtensor import Dimension, Shape, TypedTensor, Z, ttorch
-
 from transformers import (
     GPT2Config,
     PreTrainedModel,
