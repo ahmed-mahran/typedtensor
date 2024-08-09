@@ -515,9 +515,7 @@ class GPT2Attention[DType: Tensor](nn.Module):
         """
         Merges attn_head_size dim and num_attn_heads dim into hidden_size
         """
-        x = tensor.permute[Shape[BatchDim, SequenceDim, HeadDim, HeadFeatureDim]].transform(
-            lambda t: cast(DType, t.contiguous())
-        )
+        x = tensor.permute[Shape[BatchDim, SequenceDim, HeadDim, HeadFeatureDim]].contiguous()
         new_shape = x.size()[:-2] + (num_heads * attn_head_size,)
         args = x.args[:-2] + (FeatureDim,)
         return TypedTensor[DType, BatchDim, SequenceDim, FeatureDim](x.tensor.view(new_shape), args)

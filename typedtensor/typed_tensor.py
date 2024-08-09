@@ -267,6 +267,9 @@ class TypedTensor[DType: Tensor, *Dimensions](CaptureTypeArgs):
 
     def to(self, *args, **kwargs):
         return self.copy_with_tensor(self.tensor.to(*args, **kwargs))
+    
+    def contiguous(self, *args, **kwargs):
+        return self.copy_with_tensor(self.tensor.contiguous(*args, **kwargs))
 
     def __add__(self, other: DType):
         return self.transform(lambda t: cast(DType, t + other))
