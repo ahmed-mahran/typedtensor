@@ -8,7 +8,7 @@ import torch
 from torch import Size, Tensor
 
 from .dimension import Dimension, Z
-from .shape_info import DimensionArgInfo, ShapeInfo, _extract_typed_args, _is_repeated
+from .shape_info import DimensionArgInfo, ShapeArgs, ShapeInfo, _extract_typed_args, _is_repeated
 from .utils import CaptureTypeArgs, _is_tensor_subclass, _is_type_var_of_bound, match_sequence
 
 logger = logging.getLogger(__name__)
@@ -78,14 +78,14 @@ class TypedTensor[DType: Tensor, *Dimensions](CaptureTypeArgs):
             if TypedTensor.assert_valid_typed_tensor(self):
                 self._self_ = self
 
-    def copy_with_tensor[T: TypedTensor](self: T, tensor: DType) -> T:
+    def copy_with_tensor(self, tensor: DType) -> TypedTensor[DType, *Dimensions]:
         if tensor.size() != self.tensor.size():
             raise ValueError(f"Tensor sizes must match; provided {tensor.size()} while having {self.tensor.size()}")
-        t = TypedTensor(tensor)
+        t = TypedTensor[DType, *Dimensions](tensor)
         t._args = self._args
         t._type_error = self._type_error
         t._typed_args = self._typed_args
-        return cast(T, t)
+        return t
 
     def transform(self, fn: Callable[[DType], DType]):
         return self.copy_with_tensor(fn(self.tensor))
@@ -234,18 +234,19 @@ class TypedTensor[DType: Tensor, *Dimensions](CaptureTypeArgs):
         ts[dim1] = d0
         return TypedTensor(cast(DType, me.tensor.transpose(dim0, dim1)), tuple([me.args[0]] + ts))
 
-    class _Permute:
+    class _Permute[_DType: Tensor]:
         def __init__(self, o):
             self.o = o
 
-        def __getitem__[*Ps](self, tps: Tuple[*Ps]) -> TypedTensor[DType, *Ps]:
+        def __getitem__[*Ps](self, shape: ShapeArgs[*Ps]) -> TypedTensor[_DType, *Ps]:
+            tps = getattr(shape, "__args__")
             types = [tp for tp in tps if isclass(tp) and issubclass(tp, Dimension)]
             dims = [self.o.dim[tp] for tp in types]
-            return TypedTensor(cast(DType, self.o.tensor.permute(dims)), (self.o.args[0],) + tuple(types))
+            return TypedTensor(cast(_DType, self.o.tensor.permute(dims)), (self.o.args[0],) + tuple(types))
 
     @property
     def permute(self):
-        return TypedTensor._Permute(self)
+        return TypedTensor._Permute[DType](self)
 
     @overload
     def size(self, dim: None = None) -> Size: ...

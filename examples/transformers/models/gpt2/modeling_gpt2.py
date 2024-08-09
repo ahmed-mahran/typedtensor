@@ -29,12 +29,7 @@ from typing import Any, Callable, List, Optional, Tuple, cast
 import torch
 import torch.utils.checkpoint
 from torch import Tensor, nn
-from typedtensor import (
-    Dimension,
-    TypedTensor,
-    Z,
-    ttorch,
-)
+from typedtensor import Dimension, Shape, TypedTensor, Z, ttorch
 
 from transformers import (
     GPT2Config,
@@ -510,10 +505,9 @@ class GPT2Attention[DType: Tensor](nn.Module):
         Splits hidden_size dim into attn_head_size and num_heads
         """
         new_shape = tensor.size()[:-1] + (num_heads, attn_head_size)
-        t, ds = tensor.args[0], tensor.args[1:]
-        return TypedTensor(
-            tensor.tensor.view(new_shape).permute(0, 2, 1, 3), (t, ds[0], HeadDim, ds[1], HeadFeatureDim)
-        )
+        args = tensor.args[:-1] + (HeadDim, HeadFeatureDim)
+        x = TypedTensor[DType, BatchDim, SequenceDim, HeadDim, HeadFeatureDim](tensor.tensor.view(new_shape), args)
+        return x.permute[Shape[BatchDim, HeadDim, SequenceDim, HeadFeatureDim]]
 
     def _merge_heads(
         self, tensor: HeadsHiddenStatesTypedTensor[DType, SequenceDim], num_heads: int, attn_head_size: int
@@ -521,10 +515,12 @@ class GPT2Attention[DType: Tensor](nn.Module):
         """
         Merges attn_head_size dim and num_attn_heads dim into hidden_size
         """
-        x = tensor.tensor.permute(0, 2, 1, 3).contiguous()
+        x = tensor.permute[Shape[BatchDim, SequenceDim, HeadDim, HeadFeatureDim]].transform(
+            lambda t: cast(DType, t.contiguous())
+        )
         new_shape = x.size()[:-2] + (num_heads * attn_head_size,)
-        t, ds = tensor.args[0], tensor.args[1:]
-        return TypedTensor(x.view(new_shape), (t, ds[0], ds[2], FeatureDim))
+        args = x.args[:-2] + (FeatureDim,)
+        return TypedTensor[DType, BatchDim, SequenceDim, FeatureDim](x.tensor.view(new_shape), args)
 
     def forward(
         self,

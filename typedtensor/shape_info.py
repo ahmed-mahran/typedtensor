@@ -320,6 +320,13 @@ class RecDimensionArgInfo(FunctorDimensionArgInfo):
         return f"Rec[{self.base}, {self.func}]"
 
 
+class Shape[*Ds]:
+    pass
+
+
+type ShapeArgs[*Ds] = Type[Shape[*Ds]]
+
+
 @dataclass
 class ShapeInfo:
     args: List[DimensionArgInfo]
