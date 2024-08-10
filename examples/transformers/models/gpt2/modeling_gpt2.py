@@ -514,14 +514,6 @@ class GPT2Attention[DType: Tensor](nn.Module):
         key = self._split_heads(key, self.num_heads, self.head_dim)
         value = self._split_heads(value, self.num_heads, self.head_dim)
 
-        # TODO: here we can define type level concatenation
-        # def concat[D0, D1](
-        #   self: TypedTensor[DType, Z[Dimension], D0, Z[Dimenson]],
-        #   other: TypedTensor[DType, Z[Dimension], D1, Z[Dimenson]]
-        # ) -> TypedTensor[DType, Z[Dimension], Concat[D0, D1], Z[Dimenson]]: ...
-        # such that D0 + D1 = Concat[D0, D1]
-        # We might also need to define a recursive type for accumulation
-        # e.g. z: A_t = x: A_(t-1) + y: a_t
         past_and_current_key: HeadsHiddenStatesTypedTensor[DType, PastSequenceDim]
         past_and_current_value: HeadsHiddenStatesTypedTensor[DType, PastSequenceDim]
         if layer_past is not None:
