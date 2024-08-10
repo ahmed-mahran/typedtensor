@@ -1,4 +1,4 @@
-from typing import Any, Callable, List, Optional, Tuple, Type, Union, cast
+from typing import Callable, List, Optional, Tuple, Union, cast
 
 import torch
 from torch import Size, Tensor, nn
@@ -7,18 +7,15 @@ from ... import pytorch as ttorch
 from ...dimension import Dimension, Z
 from ...shape_info import Shape
 from ...typed_tensor import TypedTensor
-from ...utils import CaptureTypeArgs
+from ...utils import CapturedTypeArgs
 
 _shape_t = Union[int, List[int], Size]
 
 
-class Linear[DType: Tensor, D0: Dimension, D1: Dimension](nn.Module, CaptureTypeArgs):
+class Linear[DType: Tensor, D0: Dimension, D1: Dimension](nn.Module, CapturedTypeArgs):
     def __init__(self, in_features: int, out_features: int, bias: bool = True, device=None, dtype=None):
         super().__init__()
         self.linear = nn.Linear(in_features, out_features, bias, device, dtype)
-
-    def _on_type_args(self, type_args: Tuple[Type[Any], ...]):
-        self.type_args = type_args
 
     def forward[*Ds](self, x: TypedTensor[DType, *Ds, D0]) -> TypedTensor[DType, *Ds, D1]:
         dtype, d0, d1 = self.type_args
@@ -71,7 +68,7 @@ class LayerNorm[DType: Tensor, D0](nn.Module):
         return x.transform(lambda t: cast(DType, self.ln.forward(t)))
 
 
-class Embedding[DType: Tensor, IdsDim: Dimension, EmbeddingDim: Dimension](nn.Module, CaptureTypeArgs):
+class Embedding[DType: Tensor, IdsDim: Dimension, EmbeddingDim: Dimension](nn.Module, CapturedTypeArgs):
     def __init__(
         self,
         num_embeddings: int,
@@ -100,9 +97,6 @@ class Embedding[DType: Tensor, IdsDim: Dimension, EmbeddingDim: Dimension](nn.Mo
             device,
             dtype,
         )
-
-    def _on_type_args(self, type_args: Tuple[Type[Any], ...]):
-        self.type_args = type_args
 
     def forward(
         self, x: TypedTensor[torch.LongTensor, Z[Dimension], IdsDim]

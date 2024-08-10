@@ -60,6 +60,15 @@ class CaptureTypeArgs(ABC):
         pass
 
 
+class CapturedTypeArgs(CaptureTypeArgs):
+    def _on_type_args(self, type_args: Tuple[Type, ...]):
+        self._type_args = type_args
+
+    @property
+    def type_args(self):
+        return self._type_args
+
+
 # def function_capture_type_args_call[R, **P](fn: Callable[Concatenate[Tuple[Type, ...], P], R]):
 #     class _CaptureTypeArgs:
 #         def __getitem__(self, item):
