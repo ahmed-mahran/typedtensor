@@ -11,7 +11,14 @@ from typing import Any, List, Optional, Tuple, Type, TypeGuard, TypeVarTuple
 from torch import Size, Tensor
 
 from .dimension import Concat, Dimension, Rec, Z
-from .utils import _is_generic_type, _is_tensor_subclass, _is_type_var_of_bound, _Unpack_type, match_sequence
+from .utils import (
+    CapturedTypeArgs,
+    _is_generic_type,
+    _is_tensor_subclass,
+    _is_type_var_of_bound,
+    _Unpack_type,
+    match_sequence,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -329,7 +336,7 @@ class RecDimensionArgInfo(FunctorDimensionArgInfo):
         return f"Rec[{self.base}, {self.func}]"
 
 
-class Shape[*Ds]:
+class Shape[*Ds](Dimension, CapturedTypeArgs):
     @staticmethod
     def types_from(shape: ShapeArgs[*Ds]) -> Tuple[Type[Dimension], ...]:
         tps = getattr(shape, "__args__")
@@ -415,6 +422,9 @@ def _unpack_recognize_arg(arg: Any) -> List[DimensionArgInfo]:
     # [..., arg = T: bound = None, ...]
     elif _is_type_var_of_bound(arg, None):
         return [UnboundAbstractDimensionArgInfo(name=arg.__name__)]
+    # [..., arg = Shape[*Ds], ...]
+    elif _is_generic_type(arg, Shape):
+        return _unpack_recognize_args(getattr(arg, "__args__"))
     # [..., arg = Concat[L, R], ...]
     elif _is_generic_type(arg, Concat):
         concat_args = getattr(arg, "__args__")
@@ -449,10 +459,7 @@ def _unpack_recognize_arg(arg: Any) -> List[DimensionArgInfo]:
                 if isinstance(base, NestableDimensionArgInfo):
                     return [RepeatedDimensionArgInfo(base)]
             # unpacked is Tuple[A, B, ...] i.e. a bounded tuple of types
-            r = []
-            for a in getattr(unpacked, "__args__"):
-                r.extend(_unpack_recognize_arg(a))
-            return r
+            return _unpack_recognize_args(getattr(unpacked, "__args__"))
     raise TypeError(f"Unrecognized shape parameter {arg} of type {type(arg)}")
 
 
@@ -488,15 +495,19 @@ def _extract_typed_args[DType: Tensor](
     return d_type, shape_info
 
 
-def _extract_typed_shape_args(_args: Optional[Tuple[Any, ...]]) -> ShapeInfo:
-    if _args is None or len(_args) == 0:
-        raise TypeError("Cannot verify shape of tensor; no arguments provided")
-
+def _unpack_recognize_args(_args: Tuple[Any, ...]):
     shape_args = []
     for arg in _args:
         shape_args.extend(_unpack_recognize_arg(arg))
 
-    return ShapeInfo(shape_args)
+    return shape_args
+
+
+def _extract_typed_shape_args(_args: Optional[Tuple[Any, ...]]) -> ShapeInfo:
+    if _args is None or len(_args) == 0:
+        raise TypeError("Cannot verify shape of tensor; no arguments provided")
+
+    return ShapeInfo(_unpack_recognize_args(_args))
 
 
 def _is_repeated(

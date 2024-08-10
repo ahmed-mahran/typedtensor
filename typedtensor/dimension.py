@@ -1,7 +1,8 @@
+from abc import ABCMeta
 from typing import Type, cast
 
 
-class DimensionMeta(type):
+class DimensionMeta(ABCMeta):
     def __new__(cls, name, bases, namespace, **kwargs):
         if name != "Dimension":
             length = kwargs.get("length", None)
