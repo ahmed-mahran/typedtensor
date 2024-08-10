@@ -337,7 +337,7 @@ class GPT2Attention[DType: Tensor](nn.Module):
                 .transpose(-1, -2)
                 .as_z_d0_d1[FeatureDim, PastAndCurrentSequenceDim]
             )
-            .asinstanceof[TypedTensor[DType, BatchDim, HeadDim, SequenceDim, PastAndCurrentSequenceDim]]
+            .shaped[Shape[BatchDim, HeadDim, SequenceDim, PastAndCurrentSequenceDim]]
         )
 
         if self.scale_attn_weights:
@@ -406,7 +406,7 @@ class GPT2Attention[DType: Tensor](nn.Module):
         attn_output = (
             attn_weights.as_z_d0_d1[SequenceDim, PastAndCurrentSequenceDim]
             .matmul(value.as_z_d0_d1[PastAndCurrentSequenceDim, HeadFeatureDim])
-            .asinstanceof[TypedTensor[DType, BatchDim, HeadDim, SequenceDim, HeadFeatureDim]]
+            .shaped[Shape[BatchDim, HeadDim, SequenceDim, HeadFeatureDim]]
         )
 
         return attn_output, attn_weights
@@ -527,17 +527,13 @@ class GPT2Attention[DType: Tensor](nn.Module):
         if layer_past is not None:
             past_and_current_key = ttorch.cat[_SequenceDim](
                 [layer_past.key.as_z_d0_z[_SequenceDim], key.as_z_d0_z[_SequenceDim]]
-            ).asinstanceof[TypedTensor[DType, BatchDim, HeadDim, PastSequenceDim, HeadFeatureDim]]
+            ).shaped[Shape[BatchDim, HeadDim, PastSequenceDim, HeadFeatureDim]]
             past_and_current_value = ttorch.cat[_SequenceDim](
                 [layer_past.value.as_z_d0_z[_SequenceDim], value.as_z_d0_z[_SequenceDim]]
-            ).asinstanceof[TypedTensor[DType, BatchDim, HeadDim, PastSequenceDim, HeadFeatureDim]]
+            ).shaped[Shape[BatchDim, HeadDim, PastSequenceDim, HeadFeatureDim]]
         else:
-            past_and_current_key = key.asinstanceof[
-                TypedTensor[DType, BatchDim, HeadDim, PastSequenceDim, HeadFeatureDim]
-            ]
-            past_and_current_value = value.asinstanceof[
-                TypedTensor[DType, BatchDim, HeadDim, PastSequenceDim, HeadFeatureDim]
-            ]
+            past_and_current_key = key.shaped[Shape[BatchDim, HeadDim, PastSequenceDim, HeadFeatureDim]]
+            past_and_current_value = value.shaped[Shape[BatchDim, HeadDim, PastSequenceDim, HeadFeatureDim]]
 
         # if self.reorder_and_upcast_attn:
         #     attn_output, attn_weights = self._upcast_and_reordered_attn(query, past_and_current_key, past_and_current_value, attention_mask, head_mask)
@@ -547,8 +543,8 @@ class GPT2Attention[DType: Tensor](nn.Module):
         )
 
         attn_output = self._merge_heads(attn_output, self.num_heads, self.head_dim)
-        attn_output = self.c_proj.forward(attn_output.as_z_d0[FeatureDim]).asinstanceof[
-            TypedTensor[DType, BatchDim, SequenceDim, FeatureDim]
+        attn_output = self.c_proj.forward(attn_output.as_z_d0[FeatureDim]).shaped[
+            Shape[BatchDim, SequenceDim, FeatureDim]
         ]
 
         return GPT2AttentionOutput(
@@ -662,8 +658,8 @@ class GPT2Block[DType: Tensor](nn.Module):
         # Feed Forward
         def feedforward(hidden_states: HiddenStatesTypedTensor[DType]):
             feed_forward_hidden_states = self.mlp.forward(self.ln_2(hidden_states))
-            return feed_forward_hidden_states.asinstanceof[
-                TypedTensor[DType, BatchDim, SequenceDim, FeatureDim]
+            return feed_forward_hidden_states.shaped[
+                Shape[BatchDim, SequenceDim, FeatureDim]
             ], feed_forward_hidden_states
 
         hidden_states_3, _ = residual_connection(hidden_states_2, feedforward)
