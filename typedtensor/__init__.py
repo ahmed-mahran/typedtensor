@@ -1,4 +1,3 @@
-from . import torch
 from .dimension import Concat, Dimension, Rec, Z, dimension
 from .shape_info import (
     AbstractDimensionArgInfo,

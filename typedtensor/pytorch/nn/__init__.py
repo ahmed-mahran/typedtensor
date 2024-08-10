@@ -3,7 +3,7 @@ from typing import Any, Callable, List, Optional, Tuple, Type, Union, cast
 import torch
 from torch import Size, Tensor, nn
 
-from ... import torch as ttorch
+from ... import pytorch as ttorch
 from ...dimension import Dimension, Z
 from ...shape_info import Shape
 from ...typed_tensor import TypedTensor

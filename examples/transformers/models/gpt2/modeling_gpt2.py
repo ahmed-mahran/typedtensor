@@ -27,8 +27,8 @@ from dataclasses import dataclass
 from typing import Any, List, Optional, Tuple, cast
 
 from typedtensor import Dimension, Shape, TypedTensor, Z
-from typedtensor import torch as ttorch
-from typedtensor.torch import nn as tnn
+from typedtensor import pytorch as ttorch
+from typedtensor.pytorch import nn as tnn
 
 import torch
 from torch import Size, Tensor, nn
