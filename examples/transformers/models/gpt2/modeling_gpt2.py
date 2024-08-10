@@ -342,17 +342,12 @@ class GPT2Attention[DType: Tensor](nn.Module):
 
         if self.scale_attn_weights:
             # value.size(-1) = head_features
-            attn_weights = attn_weights.transform(
-                lambda t: cast(
-                    DType,
-                    t / torch.full([], value.size(-1) ** 0.5, dtype=attn_weights.dtype, device=attn_weights.device),
-                )
-            )
+            attn_weights = attn_weights / cast(DType, torch.full([], value.size(-1) ** 0.5, dtype=attn_weights.dtype, device=attn_weights.device))
 
         # Layer-wise attention scaling
         if self.scale_attn_by_inverse_layer_idx and self.layer_idx is not None:
             layer_idx = self.layer_idx
-            attn_weights = attn_weights.transform(lambda t: cast(DType, t / float(layer_idx + 1)))
+            attn_weights = attn_weights / float(layer_idx + 1)
 
         if not self.is_cross_attention:
             # if only "normal" attention layer implements causal mask

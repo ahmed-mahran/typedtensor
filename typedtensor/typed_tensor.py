@@ -326,6 +326,9 @@ class TypedTensor[DType: Tensor, *Dimensions](CaptureTypeArgs):
     def __mul__(self, other: DType):
         return self.transform(lambda t: cast(DType, t * other))
 
+    def __truediv__(self, other: DType | int | float):
+        return self.transform(lambda t: cast(DType, t / other))
+
 
 def is_instance_of[DType: Tensor, *Dimensions, T](t: TypedTensor[DType, *Dimensions], tp: Type[T]) -> TypeGuard[T]:
     tensor_dtype, tensor_shape_info = t.typed_args
