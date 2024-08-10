@@ -24,7 +24,7 @@ import math
 from abc import abstractmethod
 from collections import OrderedDict
 from dataclasses import dataclass
-from typing import Any, Callable, List, Optional, Tuple, cast
+from typing import Any, List, Optional, Tuple, cast
 
 from typedtensor import Dimension, Shape, TypedTensor, Z
 from typedtensor import torch as ttorch
@@ -610,13 +610,8 @@ class GPT2Block[DType: Tensor](nn.Module):
         use_cache: Optional[bool] = False,
         output_attentions: Optional[bool] = False,
     ) -> GPT2BlockOutput[DType]:
-        # residual connection
-        def residual_connection[T: TypedTensor, R](x: T, block: Callable[[T], Tuple[T, R]]) -> Tuple[T, R]:
-            residual = x
-            y, result = block(x)
-            return y.transform(lambda t: cast(DType, t + residual.tensor)), result
-
         # Attention
+        @tnn.residual_connection
         def attention(hidden_states: HiddenStatesTypedTensor[DType]):
             attn_outputs = self.attn.forward(
                 self.ln_1.forward(hidden_states),
@@ -628,7 +623,7 @@ class GPT2Block[DType: Tensor](nn.Module):
             )
             return attn_outputs.attn_output, attn_outputs
 
-        hidden_states_1, attn_outputs = residual_connection(hidden_states, attention)
+        hidden_states_1, attn_outputs = attention(hidden_states)
 
         # Cross-Attention
         cross_attn_outputs: Optional[GPT2AttentionOutput] = None
@@ -640,6 +635,7 @@ class GPT2Block[DType: Tensor](nn.Module):
                     "cross-attention layers by setting `config.add_cross_attention=True`"
                 )
 
+            @tnn.residual_connection
             def crossattention(hidden_states: HiddenStatesTypedTensor[DType]):
                 cross_attn_outputs = self.crossattention.forward(
                     self.ln_cross_attn(hidden_states),
@@ -651,18 +647,19 @@ class GPT2Block[DType: Tensor](nn.Module):
                 )
                 return cross_attn_outputs.attn_output, cross_attn_outputs
 
-            hidden_states_2, cross_attn_outputs = residual_connection(hidden_states_1, crossattention)
+            hidden_states_2, cross_attn_outputs = crossattention(hidden_states_1)
         else:
             hidden_states_2 = hidden_states_1
 
         # Feed Forward
+        @tnn.residual_connection
         def feedforward(hidden_states: HiddenStatesTypedTensor[DType]):
             feed_forward_hidden_states = self.mlp.forward(self.ln_2(hidden_states))
             return feed_forward_hidden_states.shaped[
                 Shape[BatchDim, SequenceDim, FeatureDim]
             ], feed_forward_hidden_states
 
-        hidden_states_3, _ = residual_connection(hidden_states_2, feedforward)
+        hidden_states_3, _ = feedforward(hidden_states_2)
 
         return GPT2BlockOutput(
             hidden_states_3,

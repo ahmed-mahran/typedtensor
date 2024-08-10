@@ -1,4 +1,4 @@
-from typing import Any, List, Optional, Tuple, Type, Union, cast
+from typing import Any, Callable, List, Optional, Tuple, Type, Union, cast
 
 import torch
 from torch import Size, Tensor, nn
@@ -112,3 +112,14 @@ class Embedding[DType: Tensor, IdsDim: Dimension, EmbeddingDim: Dimension](nn.Mo
         return TypedTensor[DType, Z[Dimension], IdsDim, EmbeddingDim](
             cast(DType, self.embedding.forward(x.tensor)), args
         )
+
+
+def residual_connection[DType: Tensor, *Ds, R](
+    block: Callable[[TypedTensor[DType, *Ds]], Tuple[TypedTensor[DType, *Ds], R]],
+):
+    def inner(x: TypedTensor[DType, *Ds]) -> Tuple[TypedTensor[DType, *Ds], R]:
+        residual = x.tensor
+        y, result = block(x)
+        return y + residual, result
+
+    return inner
