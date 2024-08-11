@@ -2,22 +2,20 @@ from __future__ import annotations
 
 import logging
 from inspect import isclass
-from typing import Callable, Optional, Tuple, Type, TypeGuard, cast, overload, override
+from typing import Any, Callable, Optional, Tuple, Type, TypeGuard, cast, overload, override
 
 import torch
 from torch import Size, Tensor
 
 from .dimension import Dimension, Z
 from .shape_info import (
-    DimensionArgInfo,
     Shape,
     ShapeArgs,
     ShapeInfo,
     _extract_typed_args,
     _extract_typed_shape_args,
-    _is_repeated,
 )
-from .utils import CaptureTypeArgs, _is_tensor_subclass, _is_type_var_of_bound, match_sequence
+from .utils import CaptureTypeArgs, _is_tensor_subclass, _is_type_var_of_bound
 
 logger = logging.getLogger(__name__)
 
@@ -121,10 +119,13 @@ class TypedTensor[DType: Tensor, *Dimensions](CaptureTypeArgs):
         def __init__(self, o):
             self.o = o
 
-        def __getitem__[T](self, item: Type[T]) -> T:
-            if is_instance_of(self.o, item):
+        def __getitem__[T](self, tp: Type[T]) -> T:
+            return self.__call__(tp)
+
+        def __call__[T](self, tp: Type[T], tp_args: Optional[Tuple[Any, ...]] = None) -> T:
+            if is_instance_of(self.o, tp, tp_args):
                 return self.o
-            raise TypeError(f"{self.o} cannot be cast to {item}")
+            raise TypeError(f"{self.o} cannot be cast to {tp}")
 
     @property
     def asinstanceof(self) -> TypedTensor._AsInstanceOf:
@@ -135,8 +136,10 @@ class TypedTensor[DType: Tensor, *Dimensions](CaptureTypeArgs):
             self.o = o
 
         def __getitem__[*Ds](self, shape: ShapeArgs[*Ds]) -> TypedTensor[_DType, *Ds]:
-            # return TypedTensor(cast(_DType, self.o.tensor), (self.o.args[0],) + Shape.types_from(shape))
-            return self.o.asinstanceof[TypedTensor[_DType, *Ds]]
+            tp = TypedTensor[_DType, *Ds]
+            tp_args = (self.o.args[0],) + Shape.types_from(shape)
+            setattr(tp, "__args__", tp_args)
+            return self.o.asinstanceof(tp)
 
     @property
     def shaped[T: Tensor](
@@ -149,7 +152,10 @@ class TypedTensor[DType: Tensor, *Dimensions](CaptureTypeArgs):
             self.o = o
 
         def __getitem__[D0](self, item: Type[D0]) -> TypedTensor[T, Z[Dimension], D0]:
-            return self.o.asinstanceof[TypedTensor[T, Z[Dimension], D0]]
+            tp = TypedTensor[T, Z[Dimension], D0]
+            tp_args = (self.o.args[0], Z[Dimension], item)
+            setattr(tp, "__args__", tp_args)
+            return self.o.asinstanceof(tp)
 
     @property
     def as_z_d0[T: Tensor](
@@ -162,7 +168,10 @@ class TypedTensor[DType: Tensor, *Dimensions](CaptureTypeArgs):
             self.o = o
 
         def __getitem__[D0, D1](self, item: Tuple[D0, D1]) -> TypedTensor[T, Z[Dimension], D0, D1]:
-            return self.o.asinstanceof[TypedTensor[T, Z[Dimension], D0, D1]]
+            tp = TypedTensor[T, Z[Dimension], D0, D1]
+            tp_args = (self.o.args[0], Z[Dimension], item[0], item[1])
+            setattr(tp, "__args__", tp_args)
+            return self.o.asinstanceof(tp)
 
     @property
     def as_z_d0_d1[T: Tensor](
@@ -175,7 +184,10 @@ class TypedTensor[DType: Tensor, *Dimensions](CaptureTypeArgs):
             self.o = o
 
         def __getitem__[D0](self, item: Type[D0]) -> TypedTensor[T, Z[Dimension], D0, Z[Dimension]]:
-            return self.o.asinstanceof[TypedTensor[T, Z[Dimension], D0, Z[Dimension]]]
+            tp = TypedTensor[T, Z[Dimension], D0, Z[Dimension]]
+            tp_args = (self.o.args[0], Z[Dimension], item, Z[Dimension])
+            setattr(tp, "__args__", tp_args)
+            return self.o.asinstanceof(tp)
 
     @property
     def as_z_d0_z[T: Tensor](
@@ -190,7 +202,10 @@ class TypedTensor[DType: Tensor, *Dimensions](CaptureTypeArgs):
         def __getitem__[D0, D1](
             self, item: Tuple[D0, D1]
         ) -> TypedTensor[T, Z[Dimension], D0, Z[Dimension], D1, Z[Dimension]]:
-            return self.o.asinstanceof[TypedTensor[T, Z[Dimension], D0, Z[Dimension], D1, Z[Dimension]]]
+            tp = TypedTensor[T, Z[Dimension], D0, Z[Dimension], D1, Z[Dimension]]
+            tp_args = (self.o.args[0], Z[Dimension], item[0], Z[Dimension], item[1], Z[Dimension])
+            setattr(tp, "__args__", tp_args)
+            return self.o.asinstanceof(tp)
 
     @property
     def as_z_d0_z_d1_z[T: Tensor](
@@ -202,8 +217,8 @@ class TypedTensor[DType: Tensor, *Dimensions](CaptureTypeArgs):
         def __init__(self, o):
             self.o = o
 
-        def __getitem__[T](self, item: Type[T]) -> TypeGuard[T]:
-            return is_instance_of(self.o, item)
+        def __getitem__[T](self, tp: Type[T]) -> TypeGuard[T]:
+            return is_instance_of(self.o, tp)
 
     @property
     def isinstanceof(self) -> TypedTensor._IsInstanceOf:
@@ -216,14 +231,6 @@ class TypedTensor[DType: Tensor, *Dimensions](CaptureTypeArgs):
         _, _ = tensor.typed_args
         return True
 
-    @staticmethod
-    def is_at_least_2d[D0, D1](
-        tensor: TypedTensor[DType, Z[Dimension]],
-        d0: Optional[Type[D0]] = None,
-        d1: Optional[Type[D1]] = None,
-    ) -> TypeGuard[TypedTensor[DType, Z[Dimension], D0, D1]]:
-        return tensor.isinstanceof[TypedTensor[DType, Z[Dimension], D0, D1]]
-
     def __repr__(self):
         _, shape_info = self.typed_args
         return f"{shape_info}: {self.tensor}"
@@ -232,29 +239,19 @@ class TypedTensor[DType: Tensor, *Dimensions](CaptureTypeArgs):
         self: TypedTensor[DType, Z[Dimension], D0, D1],
         other: TypedTensor[DType, Z[Dimension], D1, D2],
     ) -> TypedTensor[DType, Z[Dimension], D0, D2]:
-        first = self.asinstanceof[TypedTensor[DType, Z[Dimension], D0, D1]]
-        second = other.asinstanceof[TypedTensor[DType, Z[Dimension], D1, D2]]
-        d2 = second.args[-1]
-        ts = first.args[:-1] + (d2,)
-        return TypedTensor(cast(DType, first.tensor.matmul(second.tensor)), ts)
-        # first = self._self
-        # if TypedTensor.is_at_least_2d(first):
-        #     d1 = first.args[-2]
-        #     d2 = other.args[-1]
-        #     return TypedTensor[DType, Z[Dimension], d1, d2](first.tensor.matmul(other.tensor))
-        # raise TypeError("matmul must be called from at least a 2D TypedTensor")
+        args = self.args[:-1] + (other.args[-1],)
+        return TypedTensor(cast(DType, self.tensor.matmul(other.tensor)), args)
 
     def transpose[D0, D1](
         self: TypedTensor[DType, Z[Dimension], D0, Z[Dimension], D1, Z[Dimension]],
         dim0: int,
         dim1: int,
     ) -> TypedTensor[DType, Z[Dimension], D1, Z[Dimension], D0, Z[Dimension]]:
-        me = self.asinstanceof[TypedTensor[DType, Z[Dimension], D0, Z[Dimension], D1, Z[Dimension]]]
-        ts = list(me.args[1:])
+        ts = list(self.args[1:])
         d0, d1 = ts[dim0], ts[dim1]
         ts[dim0] = d1
         ts[dim1] = d0
-        return TypedTensor(cast(DType, me.tensor.transpose(dim0, dim1)), tuple([me.args[0]] + ts))
+        return TypedTensor(cast(DType, self.tensor.transpose(dim0, dim1)), tuple([self.args[0]] + ts))
 
     class _Permute[_DType: Tensor]:
         def __init__(self, o):
@@ -331,10 +328,15 @@ class TypedTensor[DType: Tensor, *Dimensions](CaptureTypeArgs):
         return self.transform(lambda t: cast(DType, t / other))
 
 
-def is_instance_of[DType: Tensor, *Dimensions, T](t: TypedTensor[DType, *Dimensions], tp: Type[T]) -> TypeGuard[T]:
+def is_instance_of[DType: Tensor, *Dimensions, T](
+    t: TypedTensor[DType, *Dimensions], tp: Type[T], tp_args: Optional[Tuple[Any, ...]] = None
+) -> TypeGuard[T]:
     tensor_dtype, tensor_shape_info = t.typed_args
-    if hasattr(tp, "__args__"):
-        type_dtype, type_shape_info = _extract_typed_args(getattr(tp, "__args__"))
+    if tp_args is None and hasattr(tp, "__args__"):
+        tp_args = getattr(tp, "__args__")
+
+    if tp_args is not None:
+        type_dtype, type_shape_info = _extract_typed_args(tp_args)
     else:
         return False
 
@@ -345,12 +347,6 @@ def is_instance_of[DType: Tensor, *Dimensions, T](t: TypedTensor[DType, *Dimensi
         if type_dtype.__bound__ is None or not _is_tensor_subclass(tensor_dtype, type_dtype.__bound__):
             return False
 
-    tensor_type_args = tensor_shape_info.args
-    type_type_args = type_shape_info.args
+    logger.debug(f"Is {tensor_shape_info.args} <= {type_shape_info.args}?")
 
-    logger.debug(f"Is {tensor_type_args} <= {type_type_args}?")
-
-    def a_matches_b[I: DimensionArgInfo](a: I, b: I) -> bool:
-        return a.is_subclass(b)
-
-    return match_sequence(tensor_type_args, type_type_args, _is_repeated, _is_repeated, a_matches_b, logger)
+    return tensor_shape_info.matches(type_shape_info)
