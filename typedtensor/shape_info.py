@@ -6,7 +6,7 @@ import types
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from inspect import isclass
-from typing import Any, List, Optional, Tuple, Type, TypeGuard, TypeVarTuple
+from typing import Any, List, Optional, Tuple, Type, TypeGuard, TypeVarTuple, overload
 
 from torch import Size, Tensor
 
@@ -141,6 +141,11 @@ class AtLeastDimensionLength(DimensionLength):
 class DimensionArgInfo(ABC):
     @property
     @abstractmethod
+    def origin(self) -> Type:
+        pass
+
+    @property
+    @abstractmethod
     def length(self) -> DimensionLength:
         pass
 
@@ -162,14 +167,14 @@ class FunctorDimensionArgInfo(NestableDimensionArgInfo, ABC):
 
 
 class ConcreteDimensionArgInfo(NestableDimensionArgInfo):
-    name: str
-    _length: int
-    origin: Type[Dimension]
-
     def __init__(self, name: str, length: int, origin: Type[Dimension]):
         self.name = name
         self._length = length
-        self.origin = origin
+        self._origin = origin
+
+    @property
+    def origin(self) -> Type:
+        return self._origin
 
     @property
     def length(self):
@@ -202,10 +207,14 @@ class ConcreteDimensionArgInfo(NestableDimensionArgInfo):
         return f"{self.name}({self.length})"
 
 
-@dataclass
 class AbstractDimensionArgInfo(NestableDimensionArgInfo):
-    name: str
-    origin: Type[Dimension]
+    def __init__(self, name: str, origin: Type[Dimension]) -> None:
+        self.name = name
+        self._origin = origin
+
+    @property
+    def origin(self) -> Type:
+        return self._origin
 
     @property
     def length(self):
@@ -233,9 +242,14 @@ class AbstractDimensionArgInfo(NestableDimensionArgInfo):
         return f"{self.name}(_)"
 
 
-@dataclass
 class UnboundAbstractDimensionArgInfo(NestableDimensionArgInfo):
-    name: str = "Dimension"
+    def __init__(self, name: str = "Dimension", origin: Any = None) -> None:
+        self.name = name
+        self._origin = origin
+
+    @property
+    def origin(self) -> Type:
+        return self._origin
 
     @property
     def length(self):
@@ -266,9 +280,14 @@ class UnboundAbstractDimensionArgInfo(NestableDimensionArgInfo):
 Unkown = UnboundAbstractDimensionArgInfo(name="Unkown")
 
 
-@dataclass
 class RepeatedDimensionArgInfo(DimensionArgInfo):
-    base: NestableDimensionArgInfo
+    def __init__(self, base: NestableDimensionArgInfo, origin: Any) -> None:
+        self.base = base
+        self._origin = origin
+
+    @property
+    def origin(self) -> Type:
+        return self._origin
 
     @property
     def length(self):
@@ -284,10 +303,15 @@ class RepeatedDimensionArgInfo(DimensionArgInfo):
         return f"{self.base}*"
 
 
-@dataclass
 class ConcatDimensionArgInfo(FunctorDimensionArgInfo):
-    left: NestableDimensionArgInfo
-    right: NestableDimensionArgInfo
+    def __init__(self, left: NestableDimensionArgInfo, right: NestableDimensionArgInfo, origin: Any) -> None:
+        self.left = left
+        self.right = right
+        self._origin = origin
+
+    @property
+    def origin(self) -> Type:
+        return self._origin
 
     @property
     def length(self):
@@ -315,10 +339,15 @@ class ConcatDimensionArgInfo(FunctorDimensionArgInfo):
         return f"Concat[{self.left}, {self.right}]"
 
 
-@dataclass
 class RecDimensionArgInfo(FunctorDimensionArgInfo):
-    base: NestableDimensionArgInfo
-    func: FunctorDimensionArgInfo
+    def __init__(self, base: NestableDimensionArgInfo, func: FunctorDimensionArgInfo, origin: Any) -> None:
+        self.base = base
+        self.func = func
+        self._origin = origin
+
+    @property
+    def origin(self) -> Type:
+        return self._origin
 
     @property
     def length(self):
@@ -350,6 +379,9 @@ type ShapeArgs[*Ds] = Type[Shape[*Ds]]
 class ShapeInfo:
     args: List[DimensionArgInfo]
 
+    def types(self):
+        return [a.origin for a in self.args]
+
     class _Dim:
         def __init__(self, o):
             self.o = o
@@ -368,7 +400,13 @@ class ShapeInfo:
     def size(self) -> Size:
         return Size([a.value if isinstance(a, ExactDimensionLength) else -1 for a in self.args])
 
-    def matches(self, size: Size) -> bool:
+    def _matches_shapeinfo(self, other: ShapeInfo) -> bool:
+        def a_matches_b[I: DimensionArgInfo](a: I, b: I) -> bool:
+            return a.is_subclass(b)
+
+        return match_sequence(self.args, other.args, _is_repeated, _is_repeated, a_matches_b, logger)
+
+    def _matches_size(self, size: Size) -> bool:
         def a_matches_b(a: DimensionArgInfo, b: int) -> bool:
             if isinstance(a, ConcreteDimensionArgInfo):
                 return a.length == ExactDimensionLength(b)
@@ -398,6 +436,18 @@ class ShapeInfo:
 
         return match_sequence(self.args, list(size), _is_repeated, lambda _: False, a_matches_b, logger)
 
+    @overload
+    def matches(self, other: Size) -> bool: ...
+
+    @overload
+    def matches(self, other: ShapeInfo) -> bool: ...
+
+    def matches(self, other: Size | ShapeInfo) -> bool:
+        if isinstance(other, Size):
+            return self._matches_size(other)
+        else:
+            return self._matches_shapeinfo(other)
+
     def __repr__(self):
         return " x ".join(map(str, self.args))
 
@@ -405,10 +455,13 @@ class ShapeInfo:
 def _unpack_recognize_arg(arg: Any) -> List[DimensionArgInfo]:
     # [..., arg = Dimension, ...]
     if arg is Dimension:
-        return [AbstractDimensionArgInfo(name="Dimension", origin=Dimension)]
+        return [AbstractDimensionArgInfo(name="Dimension", origin=arg)]
     # [..., arg = Concat, ...]
     elif arg is Concat:
-        return [ConcatDimensionArgInfo(left=Unkown, right=Unkown)]
+        return [ConcatDimensionArgInfo(left=Unkown, right=Unkown, origin=arg)]
+    # [..., arg = Shape[*Ds], ...]
+    elif _is_generic_type(arg, Shape):
+        return _unpack_recognize_args(getattr(arg, "__args__"))
     # [..., arg <= Dimension, ...]
     elif isclass(arg) and issubclass(arg, Dimension):
         # [..., arg <= Dimension(length=...), ...]
@@ -421,35 +474,32 @@ def _unpack_recognize_arg(arg: Any) -> List[DimensionArgInfo]:
         return [AbstractDimensionArgInfo(name=arg.__name__, origin=arg.__bound__)]
     # [..., arg = T: bound = None, ...]
     elif _is_type_var_of_bound(arg, None):
-        return [UnboundAbstractDimensionArgInfo(name=arg.__name__)]
-    # [..., arg = Shape[*Ds], ...]
-    elif _is_generic_type(arg, Shape):
-        return _unpack_recognize_args(getattr(arg, "__args__"))
+        return [UnboundAbstractDimensionArgInfo(name=arg.__name__, origin=arg)]
     # [..., arg = Concat[L, R], ...]
     elif _is_generic_type(arg, Concat):
         concat_args = getattr(arg, "__args__")
         left = _unpack_recognize_arg(concat_args[0])[0]
         right = _unpack_recognize_arg(concat_args[1])[0]
         if isinstance(left, NestableDimensionArgInfo) and isinstance(right, NestableDimensionArgInfo):
-            return [ConcatDimensionArgInfo(left=left, right=right)]
+            return [ConcatDimensionArgInfo(left=left, right=right, origin=arg)]
     # [..., arg = Rec[A, T], ...]
     elif _is_generic_type(arg, Rec):
         rec_args = getattr(arg, "__args__")
         base = _unpack_recognize_arg(rec_args[0])[0]
         func = _unpack_recognize_arg(rec_args[1])[0]
         if isinstance(base, NestableDimensionArgInfo) and isinstance(func, FunctorDimensionArgInfo):
-            return [RecDimensionArgInfo(base=base, func=func)]
+            return [RecDimensionArgInfo(base=base, func=func, origin=arg)]
     # [..., arg = Z[T], ...]
     elif _is_generic_type(arg, Z):
         # base = T = arg.__args__[0]
         base = _unpack_recognize_arg(getattr(arg, "__args__")[0])[0]
         if isinstance(base, NestableDimensionArgInfo):
-            return [RepeatedDimensionArgInfo(base)]
+            return [RepeatedDimensionArgInfo(base, origin=arg)]
     # [..., arg = *Ts | *Tuple[...], ...]
     elif issubclass(type(arg), _Unpack_type) or issubclass(type(arg), types.GenericAlias):
         unpacked = getattr(arg, "__args__")[0] if issubclass(type(arg), _Unpack_type) else arg
         if isinstance(unpacked, TypeVarTuple):
-            return [RepeatedDimensionArgInfo(UnboundAbstractDimensionArgInfo())]
+            return [RepeatedDimensionArgInfo(UnboundAbstractDimensionArgInfo(origin=unpacked), origin=arg)]
         # unpacked is Tuple[T, ...] | Tuple[A, B, ...]
         if hasattr(unpacked, "__origin__") and getattr(unpacked, "__origin__") is tuple:
             # unpacked is Tuple[T, ...] i.e. T zero or more
@@ -457,7 +507,7 @@ def _unpack_recognize_arg(arg: Any) -> List[DimensionArgInfo]:
                 # base = T
                 base = _unpack_recognize_arg(getattr(unpacked, "__args__")[0])[0]
                 if isinstance(base, NestableDimensionArgInfo):
-                    return [RepeatedDimensionArgInfo(base)]
+                    return [RepeatedDimensionArgInfo(base, origin=arg)]
             # unpacked is Tuple[A, B, ...] i.e. a bounded tuple of types
             return _unpack_recognize_args(getattr(unpacked, "__args__"))
     raise TypeError(f"Unrecognized shape parameter {arg} of type {type(arg)}")
@@ -495,8 +545,8 @@ def _extract_typed_args[DType: Tensor](
     return d_type, shape_info
 
 
-def _unpack_recognize_args(_args: Tuple[Any, ...]):
-    shape_args = []
+def _unpack_recognize_args(_args: Tuple[Any, ...]) -> List[DimensionArgInfo]:
+    shape_args: List[DimensionArgInfo] = []
     for arg in _args:
         shape_args.extend(_unpack_recognize_arg(arg))
 
