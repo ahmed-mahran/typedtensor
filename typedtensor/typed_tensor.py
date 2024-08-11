@@ -135,7 +135,8 @@ class TypedTensor[DType: Tensor, *Dimensions](CaptureTypeArgs):
             self.o = o
 
         def __getitem__[*Ds](self, shape: ShapeArgs[*Ds]) -> TypedTensor[_DType, *Ds]:
-            return TypedTensor(cast(_DType, self.o.tensor), (self.o.args[0],) + Shape.types_from(shape))
+            # return TypedTensor(cast(_DType, self.o.tensor), (self.o.args[0],) + Shape.types_from(shape))
+            return self.o.asinstanceof[TypedTensor[_DType, *Ds]]
 
     @property
     def shaped[T: Tensor](
