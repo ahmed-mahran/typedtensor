@@ -1,9 +1,10 @@
 from typing import Type, cast
 
 import torch
-from torch import Tensor
+from torch import BoolTensor, Tensor
 
 from ..dimension import Concat, Dimension, Rec, Z
+from ..shape_info import Broadcast, Shape, ShapeInfo
 from ..typed_tensor import TypedTensor
 
 
@@ -36,3 +37,15 @@ class _cat:
 cat[Seq](xs)
 """
 cat = _cat()
+
+
+def where[DType: Tensor, *Cs, *Is, *Os](
+    condition: TypedTensor[BoolTensor, *Cs], input: TypedTensor[DType, *Is], other: TypedTensor[DType, *Os]
+):
+    res = torch.where(condition.tensor, input.tensor, other.tensor)
+    broadcast_shape = ShapeInfo(
+        Broadcast.broadcast(Broadcast.broadcast(condition.shape.args, input.shape.args), other.shape.args)
+    )
+    return TypedTensor[DType, Broadcast[Shape[Broadcast[Shape[*Cs], Shape[*Is]]], Shape[*Os]]](
+        cast(DType, res), (input.args[0],) + tuple(broadcast_shape.types())
+    )

@@ -1,1 +1,1 @@
-from .functions import addmm, cat
+from .functions import addmm, cat, where
