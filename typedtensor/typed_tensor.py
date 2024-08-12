@@ -167,9 +167,10 @@ class TypedTensor[DType: Tensor, *Dimensions](CaptureTypeArgs):
         def __init__(self, o: TypedTensor[T, *Dimensions]):
             self.o = o
 
-        def __getitem__[D0, D1](self, item: Tuple[D0, D1]) -> TypedTensor[T, Z[Dimension], D0, D1]:
+        def __getitem__[D0, D1](self, item: ShapeArgs[D0, D1]) -> TypedTensor[T, Z[Dimension], D0, D1]:
             tp = TypedTensor[T, Z[Dimension], D0, D1]
-            tp_args = (self.o.args[0], Z[Dimension], item[0], item[1])
+            d0, d1 = Shape.types_from(item)
+            tp_args = (self.o.args[0], Z[Dimension], d0, d1)
             setattr(tp, "__args__", tp_args)
             return self.o.asinstanceof(tp)
 
@@ -200,10 +201,11 @@ class TypedTensor[DType: Tensor, *Dimensions](CaptureTypeArgs):
             self.o = o
 
         def __getitem__[D0, D1](
-            self, item: Tuple[D0, D1]
+            self, item: ShapeArgs[D0, D1]
         ) -> TypedTensor[T, Z[Dimension], D0, Z[Dimension], D1, Z[Dimension]]:
             tp = TypedTensor[T, Z[Dimension], D0, Z[Dimension], D1, Z[Dimension]]
-            tp_args = (self.o.args[0], Z[Dimension], item[0], Z[Dimension], item[1], Z[Dimension])
+            d0, d1 = Shape.types_from(item)
+            tp_args = (self.o.args[0], Z[Dimension], d0, Z[Dimension], d1, Z[Dimension])
             setattr(tp, "__args__", tp_args)
             return self.o.asinstanceof(tp)
 

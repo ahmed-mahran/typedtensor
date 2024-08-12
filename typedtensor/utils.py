@@ -67,7 +67,7 @@ class CapturedTypeArgs(CaptureTypeArgs):
         self._type_args = type_args
 
     @property
-    def type_args(self):
+    def type_args(self) -> Tuple[Type, ...]:
         return self._type_args
 
 

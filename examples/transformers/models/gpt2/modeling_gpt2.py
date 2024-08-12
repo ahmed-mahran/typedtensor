@@ -331,11 +331,11 @@ class GPT2Attention[DType: Tensor](nn.Module):
         HeadsAttentionTypedTensor[DType, SequenceDim, PastAndCurrentSequenceDim],
     ]:
         attn_weights = (
-            query.as_z_d0_d1[SequenceDim, FeatureDim]
+            query.as_z_d0_d1[Shape[SequenceDim, FeatureDim]]
             .matmul(
-                key.as_z_d0_z_d1_z[PastAndCurrentSequenceDim, FeatureDim]
+                key.as_z_d0_z_d1_z[Shape[PastAndCurrentSequenceDim, FeatureDim]]
                 .transpose(-1, -2)
-                .as_z_d0_d1[FeatureDim, PastAndCurrentSequenceDim]
+                .as_z_d0_d1[Shape[FeatureDim, PastAndCurrentSequenceDim]]
             )
             .shaped[Shape[BatchDim, HeadDim, SequenceDim, PastAndCurrentSequenceDim]]
         )
@@ -399,8 +399,8 @@ class GPT2Attention[DType: Tensor](nn.Module):
         # x (batch, head, past_seq_length + seq_length, head_features)
         # = (batch, head, seq_length, head_features)
         attn_output = (
-            attn_weights.as_z_d0_d1[SequenceDim, PastAndCurrentSequenceDim]
-            .matmul(value.as_z_d0_d1[PastAndCurrentSequenceDim, HeadFeatureDim])
+            attn_weights.as_z_d0_d1[Shape[SequenceDim, PastAndCurrentSequenceDim]]
+            .matmul(value.as_z_d0_d1[Shape[PastAndCurrentSequenceDim, HeadFeatureDim]])
             .shaped[Shape[BatchDim, HeadDim, SequenceDim, HeadFeatureDim]]
         )
 
