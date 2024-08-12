@@ -17,6 +17,7 @@ from .utils import (
     _is_tensor_subclass,
     _is_type_var_of_bound,
     _Unpack_type,
+    get_common_sequence,
     match_sequence,
 )
 
@@ -371,8 +372,65 @@ class Shape[*Ds](Dimension, CapturedTypeArgs):
         tps = getattr(shape, "__args__")
         return tuple([tp for tp in tps if isclass(tp) and issubclass(tp, Dimension)])
 
+    @property
+    def shape_info(self):
+        return ShapeInfo(_unpack_recognize_args(self.type_args))
+
 
 type ShapeArgs[*Ds] = Type[Shape[*Ds]]
+
+
+class Broadcast[A: Shape, B: Shape](Dimension, CapturedTypeArgs):
+    @staticmethod
+    def broadcast(a: List[DimensionArgInfo], b: List[DimensionArgInfo]) -> List[DimensionArgInfo]:
+        """
+        Broadcast semantics on type level are defined differently. Shapes are aligned from right
+        to left. Dimension types from the higher dimensional shape on the left that don't align
+        with any dimension type from the lower dimensional shape are retruned as-is. For each
+        pair of the aligned dimension types, the type with longer length is returned given that
+        the other has length 1, or otherwise the type which is super to the other type is returned,
+        or otherwise broadcasting fails.
+
+        Currently broadcasting doesn't handle repeated dimensions. This is because repeated dimensions
+        shouldn't be used at runtime. However, if this logic to be run at static type checking time,
+        repeated dimensions must be handled somehow.
+        """
+
+        def get_common[I: DimensionArgInfo](a: Optional[I], b: Optional[I]):
+            if a is not None and b is not None:
+                if a.length > b.length and b.length.length == 1:
+                    return a
+                elif b.length > a.length and a.length.length == 1:
+                    return b
+                elif a.is_subclass(b):
+                    return b
+                elif b.is_subclass(a):
+                    return a
+            elif a is not None and b is None:
+                return a
+            elif a is None and b is not None:
+                return b
+            return None
+
+        def verify_not_repeated(args: List[DimensionArgInfo]):
+            for arg in args:
+                if _is_repeated(arg):
+                    raise TypeError(f"Cannot determine broadcast semantics of repeated dimensions {arg}")
+
+        verify_not_repeated(a)
+        verify_not_repeated(b)
+        long, short = (a, b) if len(a) >= len(b) else (b, a)
+        long_shape = [i for i in long[len(long) - len(short) :]]
+        short_shape = [i for i in short]
+        common = get_common_sequence(
+            long_shape, short_shape, _is_repeated, _is_repeated, _is_repeated, get_common, logger
+        )
+
+        if common is not None:
+            return long[: len(long) - len(short)] + common
+        # if long_shape.matches(short_shape):
+        #     return long_shape.args
+        raise TypeError(f"{ShapeInfo(a)} and {ShapeInfo(b)} are not broadcastable")
 
 
 @dataclass
@@ -462,6 +520,12 @@ def _unpack_recognize_arg(arg: Any) -> List[DimensionArgInfo]:
     # [..., arg = Shape[*Ds], ...]
     elif _is_generic_type(arg, Shape):
         return _unpack_recognize_args(getattr(arg, "__args__"))
+    # [..., arg = Broadcast[*Ds], ...]
+    elif _is_generic_type(arg, Broadcast):
+        args = getattr(arg, "__args__")
+        a = _unpack_recognize_arg(args[0])
+        b = _unpack_recognize_arg(args[1])
+        return Broadcast.broadcast(a, b)
     # [..., arg <= Dimension, ...]
     elif isclass(arg) and issubclass(arg, Dimension):
         # [..., arg <= Dimension(length=...), ...]

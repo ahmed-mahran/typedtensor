@@ -1,6 +1,7 @@
 from .dimension import Concat, Dimension, Rec, Z, dimension
 from .shape_info import (
     AbstractDimensionArgInfo,
+    Broadcast,
     ConcatDimensionArgInfo,
     ConcreteDimensionArgInfo,
     DimensionArgInfo,
