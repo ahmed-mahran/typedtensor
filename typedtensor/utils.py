@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
 from logging import Logger
 from typing import Any, Callable, List, Optional, Tuple, Type, TypeGuard, TypeVar, Unpack, cast
@@ -118,6 +120,115 @@ class CapturedTypeArgs(CaptureTypeArgs):
 #     return _CaptureTypeArgs[I]()
 
 
+class SequenceAccumulator[A, B, C, Acc](ABC):
+    """
+    Reduces A and B into C and accumulates C into Acc.
+    """
+
+    @property
+    @abstractmethod
+    def value(self) -> Acc:
+        pass
+
+    @abstractmethod
+    def accumulate(self, a: Optional[A], b: Optional[B]) -> Optional[C]:
+        pass
+
+    @abstractmethod
+    def copy(self) -> SequenceAccumulator[A, B, C, Acc]:
+        pass
+
+
+def match_sequence[A, B](
+    a_sequence: List[A],
+    b_sequence: List[B],
+    is_repeated_a: Callable[[Optional[A]], bool],
+    is_repeated_b: Callable[[Optional[B]], bool],
+    a_matches_b: Callable[[A, B], bool],
+    logger: Logger,
+) -> bool:
+    class MatchSequenceAccumulator[_A, _B](SequenceAccumulator[_A, _B, bool, bool]):
+        acc: bool
+
+        def __init__(self, a_matches_b: Callable[[_A, _B], bool]):
+            self.acc = False
+            self.a_matches_b = a_matches_b
+
+        @property
+        def value(self) -> bool:
+            return self.acc
+
+        def accumulate(self, a: Optional[_A], b: Optional[_B]) -> Optional[bool]:
+            if a is not None and b is not None and self.a_matches_b(a, b):
+                self.acc = True
+                return True
+            return None
+
+        def copy(self) -> MatchSequenceAccumulator[_A, _B]:
+            cp = MatchSequenceAccumulator(self.a_matches_b)
+            cp.acc = self.acc
+            return cp
+
+    acc = acc_sequence(
+        a_sequence, b_sequence, is_repeated_a, is_repeated_b, MatchSequenceAccumulator(a_matches_b), logger
+    )
+    return acc is not None and acc.value
+
+
+def get_common_sequence[A, B, C](
+    a_sequence: List[A],
+    b_sequence: List[B],
+    is_repeated_a: Callable[[Optional[A]], bool],
+    is_repeated_b: Callable[[Optional[B]], bool],
+    is_repeated_c: Callable[[Optional[C]], bool],
+    get_common: Callable[[Optional[A], Optional[B]], Optional[C]],
+    logger: Logger,
+) -> Optional[List[C]]:
+    class CommonSequenceAccumulator[_A, _B, _C](SequenceAccumulator[_A, _B, _C, List]):
+        acc: List[_C]
+
+        def __init__(
+            self,
+            is_repeated_c: Callable[[Optional[_C]], bool],
+            get_common: Callable[[Optional[_A], Optional[_B]], Optional[_C]],
+        ):
+            self.acc = []
+            self.is_repeated_c = is_repeated_c
+            self.get_common = get_common
+
+        @property
+        def value(self) -> List[_C]:
+            return self.acc
+
+        def accumulate(self, a: Optional[_A], b: Optional[_B]) -> Optional[_C]:
+            common = self.get_common(a, b)
+            if common is not None and (
+                len(self.acc) == 0
+                or not self.is_repeated_c(common)
+                or not self.is_repeated_c(self.acc[-1])
+                or self.acc[-1] != common
+            ):
+                self.acc = self.acc + [common]
+            return common
+
+        def copy(self) -> CommonSequenceAccumulator[_A, _B, _C]:
+            cp = CommonSequenceAccumulator(self.is_repeated_c, self.get_common)
+            cp.acc = [i for i in self.acc]
+            return cp
+
+    acc = acc_sequence(
+        a_sequence,
+        b_sequence,
+        is_repeated_a,
+        is_repeated_b,
+        CommonSequenceAccumulator(is_repeated_c, get_common),
+        logger,
+    )
+    if acc is not None:
+        return acc.value
+    return None
+
+
 # Two sequences with non-repeating dimensions match if they have the same length and corresponding
 # entries at the same index match. Repeating dimensions adds complexity to the logic; we cannot
 # compare lengths of sequences to decide on matching. However, we can compare lengths of ordered
@@ -179,15 +290,31 @@ class CapturedTypeArgs(CaptureTypeArgs):
 # -.--->()----.>()----->()----->
 #   \......../
 #       _S
-def match_sequence[A, B](
+def acc_sequence[A, B, C, Acc](
     a_sequence: List[A],
     b_sequence: List[B],
     is_repeated_a: Callable[[Optional[A]], bool],
     is_repeated_b: Callable[[Optional[B]], bool],
-    a_matches_b: Callable[[A, B], bool],
+    acc: SequenceAccumulator[A, B, C, Acc],
     logger: Logger,
-):
-    def step(i: int, j: int, indent: str, left: List[A], right: List[B]):
+) -> Optional[SequenceAccumulator[A, B, C, Acc]]:
+    """
+    This is a complex operation that concurrently traverses two sequences List[A] and List[B],
+    reducing pairs of elements (A, B) into a value C at each traversal step, accumulating reduced
+    elements C's into a value Acc along the traversal path/sequence.
+
+    Traversal begins at start of both sequences and terminates at end of both sequences. It is not
+    necessary for both sequences to have the same length as elements could be marked as repeated.
+    Repeated elements contribute zero or more times to the accumulated results as they can appear
+    in zero or more reducable pairs. I.e. a repeating element from one sequence can coincide with
+    zero or more element from the other sequence.
+
+    A traversal is discarded and considered not accumulatable at a certain step if there is no
+    reducable pairs in the next step, i.e. all next/1-hop (A, B) pairs reduce to None. This function
+    returns accumulation of the first encountered accumulatable traversal.
+    """
+
+    def step(i: int, j: int, acc: SequenceAccumulator[A, B, C, Acc], indent: str, left: List[A], right: List[B]):
         def line(content: str):
             logger.debug(f"{indent}{content}")
 
@@ -199,10 +326,12 @@ def match_sequence[A, B](
             right = [a for a in right] + [t_j]
         line(f"step({left} <=> {right} || {i}: {t_i}, {j}: {t_j})")
 
+        new_acc = acc.copy()
+
         # both have terminated, that's a match
         if t_i is None and t_j is None:
             line("[ACCEPT] both terminated")
-            return True
+            return new_acc
 
         # i has terminated while j has not
         if t_i is None:
@@ -210,24 +339,27 @@ def match_sequence[A, B](
             # return step(i, j + 1) if is_repeated_b(t_j) else False
             if is_repeated_b(t_j):
                 line("* i terminated but j is repeated")
-                return step(i, j + 1, indent + "-", left, right)
+                new_acc.accumulate(None, t_j)
+                return step(i, j + 1, new_acc, indent + "-", left, right)
             else:
                 line("[REJECT] i terminated but j is not")
-                return False
+                return None
         # j has terminated while i has not
         if t_j is None:
             # if i is repeated (0 or more) just consume it (i + 1)
             # return step(i + 1, j) if is_repeated_a(t_i) else False
             if is_repeated_a(t_i):
                 line("* j terminated but i is repeated")
-                return step(i + 1, j, indent + "-", left, right)
+                new_acc.accumulate(t_i, None)
+                return step(i + 1, j, new_acc, indent + "-", left, right)
             else:
                 line("[REJECT] j terminated but i is not")
-                return False
+                return None
         # break on mismatch
-        if not a_matches_b(t_i, t_j):
-            line("[REJECT] i is not subclass of j")
-            return False
+        c = new_acc.accumulate(t_i, t_j)
+        if c is None:
+            line("[REJECT] i and j are not reducable")
+            return None
 
         # now consider all possible next steps
         # steps = []
@@ -253,9 +385,10 @@ def match_sequence[A, B](
         line(f"* steps: {steps}")
         for next_i, next_j in steps:
             # we have found a match in one of the possible next steps
-            if step(next_i, next_j, indent + "-", left, right):
-                return True
+            step_res = step(next_i, next_j, new_acc, indent + "-", left, right)
+            if step_res is not None:
+                return step_res
         # no matches found in any possible next step
-        return False
+        return None
 
-    return step(0, 0, "", [], [])
+    return step(0, 0, acc, "", [], [])
