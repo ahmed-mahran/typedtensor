@@ -10,7 +10,7 @@ from typing import Any, List, Optional, Tuple, Type, TypeGuard, TypeVarTuple, ov
 
 from torch import Size, Tensor
 
-from .dimension import Concat, Dimension, Rec, Z
+from .dimension import Concat, Dimension, Rec, Sub, Z
 from .utils import (
     CapturedTypeArgs,
     _is_generic_type,
@@ -202,6 +202,8 @@ class ConcreteDimensionArgInfo(NestableDimensionArgInfo):
             return False
         elif isinstance(parent, RecDimensionArgInfo):
             return self.is_subclass(parent.base)
+        elif isinstance(parent, SubDimensionArgInfo):
+            return False
         raise TypeError(f"Type {type(parent)} is not handled!")
 
     def __repr__(self):
@@ -237,6 +239,8 @@ class AbstractDimensionArgInfo(NestableDimensionArgInfo):
             return self.is_subclass(parent.left) and self.is_subclass(parent.right)
         elif isinstance(parent, RecDimensionArgInfo):
             return self.is_subclass(parent.base)
+        elif isinstance(parent, SubDimensionArgInfo):
+            return False
         raise TypeError(f"Type {type(parent)} is not handled!")
 
     def __repr__(self):
@@ -272,6 +276,8 @@ class UnboundAbstractDimensionArgInfo(NestableDimensionArgInfo):
             return self.is_subclass(parent.left) and self.is_subclass(parent.right)
         elif isinstance(parent, RecDimensionArgInfo):
             return self.is_subclass(parent.base)
+        elif isinstance(parent, SubDimensionArgInfo):
+            return False
         raise TypeError(f"Type {type(parent)} is not handled!")
 
     def __repr__(self):
@@ -334,6 +340,8 @@ class ConcatDimensionArgInfo(FunctorDimensionArgInfo):
             return self.left.is_subclass(parent.left) and self.right.is_subclass(parent.right)
         elif isinstance(parent, RecDimensionArgInfo):
             return self.is_subclass(parent.base)
+        elif isinstance(parent, SubDimensionArgInfo):
+            return False
         raise TypeError(f"Type {type(parent)} is not handled!")
 
     def __repr__(self):
@@ -366,6 +374,36 @@ class RecDimensionArgInfo(FunctorDimensionArgInfo):
         return f"Rec[{self.base}, {self.func}]"
 
 
+class SubDimensionArgInfo(FunctorDimensionArgInfo):
+    def __init__(self, base: NestableDimensionArgInfo, origin: Any) -> None:
+        self.base = base
+        self._origin = origin
+
+    @property
+    def origin(self) -> Type:
+        return self._origin
+
+    @property
+    def length(self):
+        return self.base.length
+
+    def __eq__(self, other):
+        return isinstance(other, SubDimensionArgInfo) and self.base == other.base
+
+    def is_subclass(self, parent: DimensionArgInfo) -> bool:
+        if self.base == parent:
+            return True
+        return self.base.is_subclass(parent)
+
+    def __repr__(self):
+        return f"Sub[{self.base}]"
+
+
+# TODO it is confusing and maybe type unsafe to define shape
+# as a dimension; shape is a sequence of dimensions! otherwise
+# places where dimension is used need to consider complex shapes.
+# It is worth noting though that Shape is a transparent type,
+# i.e. it expands to its type parameters.
 class Shape[*Ds](Dimension, CapturedTypeArgs):
     @staticmethod
     def types_from(shape: ShapeArgs[*Ds]) -> Tuple[Any, ...]:
@@ -380,6 +418,13 @@ class Shape[*Ds](Dimension, CapturedTypeArgs):
 type ShapeArgs[*Ds] = Type[Shape[*Ds]]
 
 
+# TODO it is confusing and maybe type unsafe to define broadcast
+# as a dimension; broadcast is a shape and shape is a sequence
+# of dimensions! otherwise places where dimension is used need
+# to consider complex shapes
+# It is worth noting though that Broadcast is a transparent type,
+# i.e. it expands to its type parameters according to broadcasting
+# semantics.
 class Broadcast[A: Shape, B: Shape](Dimension, CapturedTypeArgs):
     @staticmethod
     def broadcast(a: List[DimensionArgInfo], b: List[DimensionArgInfo]) -> List[DimensionArgInfo]:
@@ -474,6 +519,8 @@ class ShapeInfo:
                 return True
             elif isinstance(a, RepeatedDimensionArgInfo):
                 return a_matches_b(a.base, b)
+            elif isinstance(a, SubDimensionArgInfo):
+                return a_matches_b(a.base, b)
             elif isinstance(a, ConcatDimensionArgInfo):
                 a_length = a.length
                 if isinstance(a_length, ExactDimensionLength):
@@ -517,6 +564,11 @@ def _unpack_recognize_arg(arg: Any) -> List[DimensionArgInfo]:
     # [..., arg = Concat, ...]
     elif arg is Concat:
         return [ConcatDimensionArgInfo(left=Unkown, right=Unkown, origin=arg)]
+    # [..., arg = Sub[D], ...]
+    elif _is_generic_type(arg, Sub):
+        base = _unpack_recognize_args(getattr(arg, "__args__"))[0]
+        if isinstance(base, NestableDimensionArgInfo):
+            return [SubDimensionArgInfo(base=base, origin=arg)]
     # [..., arg = Shape[*Ds], ...]
     elif _is_generic_type(arg, Shape):
         return _unpack_recognize_args(getattr(arg, "__args__"))

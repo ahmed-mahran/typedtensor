@@ -26,7 +26,7 @@ from collections import OrderedDict
 from dataclasses import dataclass
 from typing import Any, List, Optional, Tuple, cast
 
-from typedtensor import Dimension, Shape, TypedTensor, Z
+from typedtensor import Dimension, Shape, Sub, TypedTensor, Z
 from typedtensor import pytorch as ttorch
 from typedtensor.pytorch import nn as tnn
 
@@ -342,7 +342,9 @@ class GPT2Attention[DType: Tensor](nn.Module):
 
         if self.scale_attn_weights:
             # value.size(-1) = head_features
-            attn_weights = attn_weights / cast(DType, torch.full([], value.size(-1) ** 0.5, dtype=attn_weights.dtype, device=attn_weights.device))
+            attn_weights = attn_weights / cast(
+                DType, torch.full([], value.size(-1) ** 0.5, dtype=attn_weights.dtype, device=attn_weights.device)
+            )
 
         # Layer-wise attention scaling
         if self.scale_attn_by_inverse_layer_idx and self.layer_idx is not None:
@@ -373,14 +375,18 @@ class GPT2Attention[DType: Tensor](nn.Module):
                         .  .  .  .  .  .  .  .  .  .  .  1  0  .  .  .  .  .  .  .  .  .  .  .  .
                         .  .  .  .  .  .  .  .  .  .  .  .  1  0  .  .  .  .  .  .  .  .  .  .  .
             """
-            causal_mask = self.bias[:, :, key_length - query_length : key_length, :key_length]
+            causal_mask = TypedTensor[
+                torch.BoolTensor, Sub[BatchDim], Sub[HeadDim], Sub[SequenceDim], Sub[PastAndCurrentSequenceDim]
+            ](self.bias[:, :, key_length - query_length : key_length, :key_length])
             mask_value = torch.finfo(attn_weights.dtype).min
             # Need to be a tensor, otherwise we get error: `RuntimeError: expected scalar type float but found double`.
             # Need to be on the same device, otherwise `RuntimeError: ..., x and y to be on the same device`
-            mask_value = torch.full([], mask_value, dtype=attn_weights.dtype, device=attn_weights.device)
-            attn_weights = attn_weights.transform(
-                lambda t: torch.where(causal_mask, t.to(attn_weights.dtype), mask_value)
+            mask_value = TypedTensor[DType, Sub[PastAndCurrentSequenceDim]](
+                cast(DType, torch.full([1], mask_value, dtype=attn_weights.dtype, device=attn_weights.device))
             )
+            attn_weights = ttorch.where(causal_mask, attn_weights, mask_value).shaped[
+                Shape[BatchDim, HeadDim, SequenceDim, PastAndCurrentSequenceDim]
+            ]
 
         if attention_mask is not None:
             # Apply the attention mask

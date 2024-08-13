@@ -23,6 +23,10 @@ def dimension(name: str, length: int) -> Type[Dimension]:
     return cast(Type[Dimension], DimensionMeta(name, (Dimension,), {}, length=length))
 
 
+class Sub[T: Dimension](Dimension):
+    pass
+
+
 class Concat[A: Dimension, B: Dimension](Dimension):
     pass
 
