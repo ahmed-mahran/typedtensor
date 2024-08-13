@@ -333,8 +333,8 @@ class GPT2Attention[DType: Tensor](nn.Module):
         attn_weights = (
             query.as_z_d0_d1[Shape[SequenceDim, FeatureDim]]
             .matmul(
-                key.as_z_d0_z_d1_z[Shape[PastAndCurrentSequenceDim, FeatureDim]]
-                .transpose(-1, -2)
+                key
+                .transpose[Shape[PastAndCurrentSequenceDim, FeatureDim]]
                 .as_z_d0_d1[Shape[FeatureDim, PastAndCurrentSequenceDim]]
             )
             .shaped[Shape[BatchDim, HeadDim, SequenceDim, PastAndCurrentSequenceDim]]

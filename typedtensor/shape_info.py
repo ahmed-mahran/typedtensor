@@ -240,7 +240,7 @@ class AbstractDimensionArgInfo(NestableDimensionArgInfo):
         raise TypeError(f"Type {type(parent)} is not handled!")
 
     def __repr__(self):
-        return f"{self.name}(_)"
+        return f"{self.name}(_)" if self.origin.__name__ == self.name else f"{self.name}:{self.origin.__name__}(_)"
 
 
 class UnboundAbstractDimensionArgInfo(NestableDimensionArgInfo):
@@ -368,9 +368,9 @@ class RecDimensionArgInfo(FunctorDimensionArgInfo):
 
 class Shape[*Ds](Dimension, CapturedTypeArgs):
     @staticmethod
-    def types_from(shape: ShapeArgs[*Ds]) -> Tuple[Type[Dimension], ...]:
+    def types_from(shape: ShapeArgs[*Ds]) -> Tuple[Any, ...]:
         tps = getattr(shape, "__args__")
-        return tuple([tp for tp in tps if isclass(tp) and issubclass(tp, Dimension)])
+        return tuple([tp for tp in tps])
 
     @property
     def shape_info(self):

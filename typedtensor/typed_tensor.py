@@ -244,16 +244,29 @@ class TypedTensor[DType: Tensor, *Dimensions](CaptureTypeArgs):
         args = self.args[:-1] + (other.args[-1],)
         return TypedTensor(cast(DType, self.tensor.matmul(other.tensor)), args)
 
-    def transpose[D0, D1](
-        self: TypedTensor[DType, Z[Dimension], D0, Z[Dimension], D1, Z[Dimension]],
-        dim0: int,
-        dim1: int,
-    ) -> TypedTensor[DType, Z[Dimension], D1, Z[Dimension], D0, Z[Dimension]]:
-        ts = list(self.args[1:])
-        d0, d1 = ts[dim0], ts[dim1]
-        ts[dim0] = d1
-        ts[dim1] = d0
-        return TypedTensor(cast(DType, self.tensor.transpose(dim0, dim1)), tuple([self.args[0]] + ts))
+    class _Transpose[_DType: Tensor]:
+        def __init__(self, o):
+            self.o = o
+
+        def __getitem__[D0, D1](
+            self, shape: ShapeArgs[D0, D1]
+        ) -> TypedTensor[_DType, Z[Dimension], D1, Z[Dimension], D0, Z[Dimension]]:
+            d0, d1 = Shape.types_from(shape)
+            dim0, dim1 = tuple([self.o.dim[tp] for tp in (d0, d1)])
+            return self(cast(Type[D0], d0), cast(Type[D1], d1), dim0, dim1)
+
+        def __call__[D0, D1](
+            self, d0: Type[D0], d1: Type[D1], dim0: int, dim1: int
+        ) -> TypedTensor[_DType, Z[Dimension], D1, Z[Dimension], D0, Z[Dimension]]:
+            ts = list(self.o.args[1:])
+            d0, d1 = ts[dim0], ts[dim1]  # we prefer concrete types from tensor definition
+            ts[dim0] = d1
+            ts[dim1] = d0
+            return TypedTensor(cast(_DType, self.o.tensor.transpose(dim0, dim1)), tuple([self.o.args[0]] + ts))
+
+    @property
+    def transpose(self) -> TypedTensor._Transpose[DType]:
+        return TypedTensor._Transpose[DType](self)
 
     class _Permute[_DType: Tensor]:
         def __init__(self, o):
