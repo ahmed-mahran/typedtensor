@@ -5,9 +5,9 @@ This is a python exercise trying to write statically typed and maybe functional 
 
 This is an opportunity to challenge python's static typing capabilities to express common patterns in neural networks. 
 
-This can mostly serve pedagogical puposes teaching and learning neural networks.
+This also can mostly serve pedagogical puposes teaching and learning neural networks.
 
-## Example
+# Example
 
 Before ...
 ```python
@@ -101,7 +101,7 @@ w = (
 ```
 
 Even more, see [typed GPT2](examples/ttransformers/models/gpt2/modeling_gpt2.py) ...
-## Install
+# Install
 
 **NOTE:** This package is best compatible with `Pyright` and `VSCode`.
 
@@ -125,7 +125,7 @@ git clone git@github.com:ahmed-mahran/typedtensor.git
 git clone https://github.com/ahmed-mahran/typedtensor.git
 ```
 
-## Status quo
+# Status quo
 
 This has been quite a challenging endeavour for mainly two reasons:
 - Python is not built up to be a statically typed language.
@@ -145,3 +145,53 @@ and to see that PEP effective in all type checkers. On the other hand tensor ops
 in fast pace and are being adopted further by a fast paced well adpoted libraries, e.g. pytorch -> transformers.
 All those libraries are written in a pythonic way which would require re-writing and re-structuring to adhere
 to static type safety.
+
+# Details
+
+## Basic types
+### `Dimension`
+A tensor shape is described by a sequence of dimension types.
+`Dimension` is the base class for all dimension types.
+For each dimension type, there should be a class extending directly or indirectly from `Dimension`.
+Dimension size can be captured by setting class variable `length`.
+For example:
+```python
+# Abstract Batch dimension with no length
+class BatchDim(Dimension): pass
+# Concrete Feature dimension with a length
+class FeatureDim(Dimension, length=768): pass
+# Abstract sequence dimensions related by certain type hierarchy
+class _SequenceDim(Dimension): pass
+class CurrentSequenceDim(_SequenceDim): pass
+class PastAndCurrentSequenceDim(_SequenceDim): pass
+```
+`typedtensor` discourages usage of literals as types, strings or numbers, to describe shape.
+User defined types (UDT's) are more strict, type-safe and IDE friendly. UDT's can capture structural
+semantic relations through type hierarchy. The ability to organize types in a hierarchy is essential
+to determine types equivalence relations which is essential to typing tensor operations demanding less
+complex features from the type system.
+
+### `TypedTensor[DType, *Ds]`
+`TypedTensor` is the typed wrapper for any `torch.Tensor`. It is parameterized by:
+- `DType`: which specifies the wrapped tensor type, e.g. `torch.Tensor` or `torch.FloatTensor`
+- `*Ds`: which is a variadic type variable of dimension types describing the order and types of tensor shape
+
+For example:
+
+```python
+TypedTensor[torch.FloatTensor, BatchDim, CurrentSequenceDim, FeatureDim]
+TypedTensor[torch.LongTensor, BatchDim, CurrentSequenceDim]
+``` 
+
+Ideally shape dimensions should be unique, otherwise this can cause ambiguity matching shapes and accessing/referencing/manipulating dimensions.
+Currently, `typedtensor` doesn't impose a uniqueness constrain on types of shape dimensions however this may be
+added in future.
+
+<!---
+### `Z[D]`
+### `Shape[*Ds]`
+### `Concat[D0, D1]`
+### `Rec[D, F]`
+### `Sub[T]`
+### `Broadcast[Shape, Shape]`)
+-->
