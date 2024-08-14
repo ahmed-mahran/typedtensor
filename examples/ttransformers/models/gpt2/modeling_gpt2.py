@@ -26,16 +26,16 @@ from collections import OrderedDict
 from dataclasses import dataclass
 from typing import Any, List, Optional, Tuple, cast
 
-from typedtensor import Dimension, Shape, Sub, TypedTensor, Z
-from typedtensor import pytorch as ttorch
-from typedtensor.pytorch import nn as tnn
-
 import torch
+import transformers.modeling_outputs
 from torch import Size, Tensor, nn
 from transformers import (
     GPT2Config,
     PreTrainedModel,
 )
+from typedtensor import Dimension, Shape, Sub, TypedTensor, Z
+from typedtensor import pytorch as ttorch
+from typedtensor.pytorch import nn as tnn
 
 logger = logging.getLogger(__name__)
 
@@ -330,12 +330,15 @@ class GPT2Attention[DType: Tensor](nn.Module):
         HeadsHiddenStatesTypedTensor[DType, SequenceDim],
         HeadsAttentionTypedTensor[DType, SequenceDim, PastAndCurrentSequenceDim],
     ]:
+        # capturing runtime type
+        _PastAndCurrentSequenceDim = key.args[1:][key.dim[PastAndCurrentSequenceDim]]
+
         attn_weights = (
-            query.as_z_d0_d1[Shape[SequenceDim, FeatureDim]]
+            query.as_z_d0_d1[Shape[SequenceDim, HeadFeatureDim]]
             .matmul(
-                key
-                .transpose[Shape[PastAndCurrentSequenceDim, FeatureDim]]
-                .as_z_d0_d1[Shape[FeatureDim, PastAndCurrentSequenceDim]]
+                key.transpose[Shape[PastAndCurrentSequenceDim, HeadFeatureDim]].as_z_d0_d1[
+                    Shape[HeadFeatureDim, PastAndCurrentSequenceDim]
+                ]
             )
             .shaped[Shape[BatchDim, HeadDim, SequenceDim, PastAndCurrentSequenceDim]]
         )
@@ -376,12 +379,12 @@ class GPT2Attention[DType: Tensor](nn.Module):
                         .  .  .  .  .  .  .  .  .  .  .  .  1  0  .  .  .  .  .  .  .  .  .  .  .
             """
             causal_mask = TypedTensor[
-                torch.BoolTensor, Sub[BatchDim], Sub[HeadDim], Sub[SequenceDim], Sub[PastAndCurrentSequenceDim]
+                torch.BoolTensor, Sub[BatchDim], Sub[HeadDim], Sub[SequenceDim], Sub[_PastAndCurrentSequenceDim]
             ](self.bias[:, :, key_length - query_length : key_length, :key_length])
             mask_value = torch.finfo(attn_weights.dtype).min
             # Need to be a tensor, otherwise we get error: `RuntimeError: expected scalar type float but found double`.
             # Need to be on the same device, otherwise `RuntimeError: ..., x and y to be on the same device`
-            mask_value = TypedTensor[DType, Sub[PastAndCurrentSequenceDim]](
+            mask_value = TypedTensor[DType, Sub[_PastAndCurrentSequenceDim]](
                 cast(DType, torch.full([1], mask_value, dtype=attn_weights.dtype, device=attn_weights.device))
             )
             attn_weights = ttorch.where(causal_mask, attn_weights, mask_value).shaped[
@@ -802,7 +805,9 @@ class GPT2Model[DType: Tensor](GPT2PreTrainedModel[DType]):
             position_ids_tensor = torch.arange(
                 past_seq_length, input_seq_length + past_seq_length, dtype=torch.long, device=device
             )
-            position_ids = TypedTensor(cast(torch.LongTensor, position_ids_tensor.unsqueeze(0).expand(batch_size, -1)))
+            position_ids = TypedTensor[torch.LongTensor, BatchDim, SequenceDim](
+                cast(torch.LongTensor, position_ids_tensor.unsqueeze(0).expand(batch_size, -1))
+            )
 
         if inputs_embeds is None:
             if input_ids is not None:
@@ -881,7 +886,7 @@ class GPT2Model[DType: Tensor](GPT2PreTrainedModel[DType]):
 
             hidden_states = outputs.hidden_states
             if presents is not None:
-                presents = presents.append(outputs.present)
+                presents.append(outputs.present)
 
             if output_attentions:
                 if all_self_attentions is not None and outputs.attentions is not None:
@@ -1033,3 +1038,74 @@ class GPT2LMHeadModel[DType: Tensor](GPT2PreTrainedModel[DType]):
             attentions=transformer_outputs.attentions,
             cross_attentions=transformer_outputs.cross_attentions,
         )
+
+
+if __name__ == "__main__":
+    import random
+
+    import numpy as np
+    import torch
+    import transformers
+
+    config = transformers.GPT2Config(
+        vocab_size=6,
+        n_positions=5,
+        n_embd=30,
+        n_layer=5,
+        n_head=3,
+        n_inner=None,
+        activation_function="gelu",
+        layer_norm_epsilon=1e-5,
+        initializer_range=0.02,
+        scale_attn_weights=True,
+        use_cache=True,
+        bos_token_id=5,
+        eos_token_id=5,
+        attn_implementation="eager",
+        return_dict=True,
+        output_hidden_states=True,
+        output_attentions=True,
+        add_cross_attention=False,
+        pruned_heads=None,
+    )
+
+    input_ids = cast(torch.LongTensor, torch.LongTensor([[1, 2, 3], [4, 4, 2]]))
+    batch_features_t = torch.randn((2, 30), dtype=torch.float)
+    batch_seq_features_t = torch.randn((2, 3, 30), dtype=torch.float)
+
+    def reset_state():
+        torch.manual_seed(0)
+        random.seed(0)
+        np.random.seed(0)
+
+    ###########################################################################
+    reset_state()
+
+    subject_model = GPT2LMHeadModel[torch.FloatTensor](config).eval()
+    subject_res = subject_model.forward(
+        input_ids=TypedTensor[torch.LongTensor, BatchDim, SequenceDim](input_ids),
+        use_cache=True,
+    )
+    ###########################################################################
+    reset_state()
+
+    baseline_model = transformers.GPT2LMHeadModel(config).eval()
+    baseline_res = baseline_model.forward(
+        input_ids=input_ids,
+        use_cache=True,
+    )
+    ###########################################################################
+
+    assert isinstance(baseline_res, transformers.modeling_outputs.CausalLMOutputWithCrossAttentions)
+    assert subject_res.attentions is not None and baseline_res.attentions is not None
+    assert torch.equal(subject_res.attentions[0].tensor, baseline_res.attentions[0])
+
+    assert subject_res.hidden_states is not None and baseline_res.hidden_states is not None
+    assert torch.equal(subject_res.hidden_states[0].tensor, baseline_res.hidden_states[0])
+
+    assert subject_res.logits is not None and baseline_res.logits is not None
+    assert torch.equal(subject_res.logits.tensor, baseline_res.logits)
+
+    assert subject_res.past_key_values is not None and baseline_res.past_key_values is not None
+    assert torch.equal(subject_res.past_key_values[0].key.tensor, baseline_res.past_key_values[0][0])
+    assert torch.equal(subject_res.past_key_values[0].value.tensor, baseline_res.past_key_values[0][1])  # type: ignore

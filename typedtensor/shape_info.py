@@ -6,7 +6,7 @@ import types
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from inspect import isclass
-from typing import Any, List, Optional, Tuple, Type, TypeGuard, TypeVarTuple, overload
+from typing import Any, List, Optional, Tuple, Type, TypeGuard, TypeVar, TypeVarTuple, overload
 
 from torch import Size, Tensor
 
@@ -375,6 +375,8 @@ class RecDimensionArgInfo(FunctorDimensionArgInfo):
 
 
 class SubDimensionArgInfo(FunctorDimensionArgInfo):
+    _length: DimensionLength = UnboundDimensionLength()
+
     def __init__(self, base: NestableDimensionArgInfo, origin: Any) -> None:
         self.base = base
         self._origin = origin
@@ -385,15 +387,13 @@ class SubDimensionArgInfo(FunctorDimensionArgInfo):
 
     @property
     def length(self):
-        return self.base.length
+        return self._length
 
     def __eq__(self, other):
         return isinstance(other, SubDimensionArgInfo) and self.base == other.base
 
     def is_subclass(self, parent: DimensionArgInfo) -> bool:
-        if self.base == parent:
-            return True
-        return self.base.is_subclass(parent)
+        return (self.base.is_subclass(parent) and parent.is_subclass(self.base)) or self.base.is_subclass(parent)
 
     def __repr__(self):
         return f"Sub[{self.base}]"
@@ -489,7 +489,7 @@ class ShapeInfo:
         def __init__(self, o):
             self.o = o
 
-        def __getitem__[T: Dimension](self, tp: Type[T]):
+        def __getitem__[T](self, tp: Type[T] | TypeVar):
             arg = _unpack_recognize_arg(tp)[0]
             for i, item in enumerate(self.o.args):
                 if item.is_subclass(arg):
@@ -520,7 +520,7 @@ class ShapeInfo:
             elif isinstance(a, RepeatedDimensionArgInfo):
                 return a_matches_b(a.base, b)
             elif isinstance(a, SubDimensionArgInfo):
-                return a_matches_b(a.base, b)
+                return True
             elif isinstance(a, ConcatDimensionArgInfo):
                 a_length = a.length
                 if isinstance(a_length, ExactDimensionLength):

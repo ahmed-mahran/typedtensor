@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from logging import Logger
-from typing import Any, Callable, List, Optional, Tuple, Type, TypeGuard, TypeVar, Unpack, cast
+from typing import Any, Callable, List, Optional, Self, Tuple, Type, TypeGuard, TypeVar, Unpack, cast
 
 import torch
 
@@ -135,7 +135,7 @@ class SequenceAccumulator[A, B, C, Acc](ABC):
         pass
 
     @abstractmethod
-    def copy(self) -> SequenceAccumulator[A, B, C, Acc]:
+    def copy(self) -> Self:
         pass
 
 
