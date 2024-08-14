@@ -1,4 +1,4 @@
-# typedtensor
+# Typed Tensor
 Yet another type annotations and runtime checking for tensor shape and datatype.
 
 This is a python exercise trying to write statically typed and maybe functional style code by a scala minded person.
@@ -8,6 +8,19 @@ This is an opportunity to challenge python's static typing capabilities to expre
 This can mostly serve pedagogical puposes teaching and learning neural networks.
 
 ## Example
+
+Before ...
+```python
+a = torch.randn(128, 1024, 768)
+```
+
+... After
+```python
+a = TypedTensor[torch.Tensor, BatchDim, SequenceDim, FeatureDim](torch.randn(128, 1024, 768))
+```
+
+A little bit more ...
+
 ```python
 from torch import (Tensor, FloatTensor)
 from typedtensor import (
@@ -23,23 +36,54 @@ class BatchDim(Dimension, length=128): pass
 class SequenceDim(Dimension): pass
 class FeatureDim(Dimension): pass
 
-# transpose method signature defined in TypedTensor
+# matmul method signature defined in TypedTensor
 # Z[Dimension] corresponds to a variadic generic which implies zero or
 # more Dimensions
+def matmul[D0, D1, D2](
+    self: TypedTensor[DType, Z[Dimension], D0, D1],
+    other: TypedTensor[DType, Z[Dimension], D1, D2],
+) -> TypedTensor[DType, Z[Dimension], D0, D2]:
+    ...
+
+# this approximates transpose method signature in TypedTensor
 def transpose[D0, D1](
-      self: TypedTensor[DType, Z[Dimension], D0, Z[Dimension], D1, Z[Dimension]],
-      dim0: int,
-      dim1: int,
-  ) -> TypedTensor[DType, Z[Dimension], D1, Z[Dimension], D0, Z[Dimension]]:
-  ...
+    self: TypedTensor[DType, Z[Dimension], D0, Z[Dimension], D1, Z[Dimension]],
+) -> TypedTensor[DType, Z[Dimension], D1, Z[Dimension], D0, Z[Dimension]]:
+    ...
 
-x_0 = TypedTensor[torch.FloatTensor, BatchDim, SequenceDim, FeatureDim](cast(torch.FloatTensor, torch.randn(128, 1024, 768)))
-reveal_type(x_0) # Type of "x_0" is "TypedTensor[FloatTensor, BatchDim, SequenceDim, FeatureDim]"
-x_1 = x_0.as_z_d0_z_d1_z[BatchDim, FeatureDim]
-reveal_type(x_1) # Type of "x_1" is "TypedTensor[FloatTensor, Z[Dimension], type[BatchDim], Z[Dimension], type[FeatureDim], Z[Dimension]]"
-x_2 = x_1.transpose(0, 2)
-reveal_type(x_2) # Type of "x_2" is "TypedTensor[FloatTensor, Z[Dimension], type[FeatureDim], Z[Dimension], type[BatchDim], Z[Dimension]]"
-x_3 = x_2.asinstanceof[TypedTensor[torch.FloatTensor, FeatureDim, SequenceDim, BatchDim]]
-reveal_type(x_3) # Type of "x_3" is "TypedTensor[FloatTensor, FeatureDim, SequenceDim, BatchDim]"
+a = TypedTensor[torch.FloatTensor, BatchDim, SequenceDim, FeatureDim](cast(torch.FloatTensor, torch.randn(128, 1024, 768)))
+b = TypedTensor[torch.FloatTensor, BatchDim, SequenceDim, FeatureDim](cast(torch.FloatTensor, torch.randn(128, 1024, 768)))
 
+
+# TypedTensor[torch.FloatTensor, BatchDim, SequenceDim, SequenceDim]
+w = (
+    a # TypedTensor[FloatTensor, BatchDim, SequenceDim, FeatureDim]
+    .as_z_d0_d1[SequenceDim, FeatureDim] # TypedTensor[FloatTensor, Z[Dimension], SequenceDim, FeatureDim]
+    .matmul(
+        b # TypedTensor[FloatTensor, BatchDim, SequenceDim, FeatureDim]
+        .transpose[SequenceDim, FeatureDim] # TypedTensor[FloatTensor, Z[Dimension], FeatureDim, Z[Dimension], SequenceDim]
+        .as_z_d0_d1[FeatureDim, SequenceDim] # TypedTensor[FloatTensor, Z[Dimension], FeatureDim, SequenceDim]
+    )  # TypedTensor[FloatTensor, Z[Dimension], SequenceDim, SequenceDim]
+).asinstanceof[TypedTensor[torch.FloatTensor, BatchDim, SequenceDim, SequenceDim]]
 ```
+
+## Status quo
+
+This has been quite a challenging endeavour for mainly two reasons:
+- Python is not built up to be a statically typed language.
+- Tensor operations have inherently complex patterns and relations that could hardly be captured by any ordinary type system.
+
+Static typing features were incrementally added to python through [a series of PEP's](https://peps.python.org/topic/typing/).
+In particular, [PEP 646](https://peps.python.org/pep-0646/) was a major milestone which has introduced variadic generics which allows
+the type of array-like structures to be parameterised with the array shape. On the other hand tensor operations
+have complex type patterns. Transpose and shape permute operations would require rearranging shape type parameters.
+Concatenation and stacking operations would require some sort of type parameters aggregations to type-hint affected
+dimensions. Not to mention convolution operations which would require some sort of type arithmetics to express
+output dimensions as a function of dimensions of input tensors and input parameters like stride, padding and dilation.
+
+Python current typing specifications are not sufficient to seamlessly express all tensor operations. Moreover,
+it is rather slow to implement new specifications; it could take years to discuss and implement a single PEP
+and to see that PEP effective in all type checkers. On the other hand tensor ops libraries are being developed
+in fast pace and are being adopted further by a fast paced well adpoted libraries, e.g. pytorch -> transformers.
+All those libraries are written in a pythonic way which would require re-writing and re-structuring to adhere
+to static type safety.
