@@ -55,6 +55,7 @@ a = TypedTensor[torch.FloatTensor, BatchDim, SequenceDim, FeatureDim](cast(torch
 b = TypedTensor[torch.FloatTensor, BatchDim, SequenceDim, FeatureDim](cast(torch.FloatTensor, torch.randn(128, 1024, 768)))
 
 
+# NOTE: type casting ops, with name as*, can be removed if new specs are imlemented in python and type checkers
 # TypedTensor[torch.FloatTensor, BatchDim, SequenceDim, SequenceDim]
 w = (
     a # TypedTensor[FloatTensor, BatchDim, SequenceDim, FeatureDim]
@@ -65,6 +66,38 @@ w = (
         .as_z_d0_d1[FeatureDim, SequenceDim] # TypedTensor[FloatTensor, Z[Dimension], FeatureDim, SequenceDim]
     )  # TypedTensor[FloatTensor, Z[Dimension], SequenceDim, SequenceDim]
 ).asinstanceof[TypedTensor[torch.FloatTensor, BatchDim, SequenceDim, SequenceDim]]
+```
+
+Ideally ...
+
+```python
+class BatchDim(Dimension, length=128): pass
+class SequenceDim(Dimension): pass
+class FeatureDim(Dimension): pass
+
+def matmul[*Ds, D0, D1, D2](
+    self: TypedTensor[DType, *Ds, D0, D1],
+    other: TypedTensor[DType, *Ds, D1, D2],
+) -> TypedTensor[DType, *Ds, D0, D2]:
+    ...
+
+def transpose[*PreDs, *MidDs, *PostDs, D0, D1](
+    self: TypedTensor[DType, *PreDs, D0, *MidDs, D1, *PostDs],
+) -> TypedTensor[DType, *PreDs, D1, *MidDs, D0, *PostDs]:
+    ...
+
+a = TypedTensor[torch.FloatTensor, BatchDim, SequenceDim, FeatureDim](cast(torch.FloatTensor, torch.randn(128, 1024, 768)))
+b = TypedTensor[torch.FloatTensor, BatchDim, SequenceDim, FeatureDim](cast(torch.FloatTensor, torch.randn(128, 1024, 768)))
+
+
+# TypedTensor[torch.FloatTensor, BatchDim, SequenceDim, SequenceDim]
+w = (
+    a # TypedTensor[FloatTensor, BatchDim, SequenceDim, FeatureDim]
+    .matmul(
+        b # TypedTensor[FloatTensor, BatchDim, SequenceDim, FeatureDim]
+        .transpose[SequenceDim, FeatureDim] # TypedTensor[FloatTensor, BatchDim, FeatureDim, SequenceDim]
+    )  # TypedTensor[torch.FloatTensor, BatchDim, SequenceDim, SequenceDim]
+)
 ```
 
 ## Status quo
