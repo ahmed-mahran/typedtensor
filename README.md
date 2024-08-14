@@ -100,6 +100,8 @@ w = (
 )
 ```
 
+Even more, see [typed GPT2](examples/ttransformers/models/gpt2/modeling_gpt2.py) ...
+
 ## Status quo
 
 This has been quite a challenging endeavour for mainly two reasons:
