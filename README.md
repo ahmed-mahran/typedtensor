@@ -101,6 +101,29 @@ w = (
 ```
 
 Even more, see [typed GPT2](examples/ttransformers/models/gpt2/modeling_gpt2.py) ...
+## Install
+
+**NOTE:** This package is best compatible with `Pyright` and `VSCode`.
+
+`typedtensor` is not yet published however if you want to give it a try locally:
+
+```commandline
+pip install -U git+https://github.com/ahmed-mahran/typedtensor.git@main
+```
+
+To remove it:
+
+```commandline
+pip uninstall typedtensor
+```
+
+To view `examples`, you may clone this repo. Again, I recommend using `Pyright` as a type checker.
+
+```commandline
+git clone git@github.com:ahmed-mahran/typedtensor.git
+# Or
+git clone https://github.com/ahmed-mahran/typedtensor.git
+```
 
 ## Status quo
 
