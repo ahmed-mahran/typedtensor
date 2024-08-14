@@ -187,8 +187,41 @@ Ideally shape dimensions should be unique, otherwise this can cause ambiguity ma
 Currently, `typedtensor` doesn't impose a uniqueness constrain on types of shape dimensions however this may be
 added in future.
 
-<!---
 ### `Z[D]`
+Zero or more dimensions! PEP 646 [doesn't allow multilpe variadic type variables](https://peps.python.org/pep-0646/#multiple-type-variable-tuples-not-allowed)
+nor it allows [multiple unpackings](https://peps.python.org/pep-0646/#multiple-unpackings-in-a-tuple-not-allowed).
+However, arbitrarly dimension picking operations, like transpose or concatenate, need to describe shape patterns
+with more than one wildcard. For example, consider the transpose operation:
+```python
+def transpose[*PreDs, *MidDs, *PostDs, D0, D1](
+    self: TypedTensor[DType, *PreDs, D0, *MidDs, D1, *PostDs],
+) -> TypedTensor[DType, *PreDs, D1, *MidDs, D0, *PostDs]:
+    ...
+```
+Transpose swaps any two dimensions `D0` and `D1`. The input tensor should be of the form `TypedTensor[DType, *PreDs, D0, *MidDs, D1, *PostDs]`
+while the output tensor should be of the same form but with `D0` and `D1` swapped `TypedTensor[DType, *PreDs, D1, *MidDs, D0, *PostDs]`.
+It is currently not possibel to write such type patterns in python. So, `Z` is coming to fulfill this need and
+hopefully temporarily!
+```python
+def transpose[D0, D1](
+    self: TypedTensor[DType, Z[Dimension], D0, Z[Dimension], D1, Z[Dimension]],
+) -> TypedTensor[DType, Z[Dimension], D1, Z[Dimension], D0, Z[Dimension]]:
+    ...
+```
+This comes with an extra cost and redundancy as we need explicit type casting to convince the type checker that
+a typed tensor is of a certain shape pattern. E.g. in order to use transposed tensor, it should first be cast to
+the suitable shape pattern.
+```python
+a: TypedTensor[FloatTensor, BatchDim, SequenceDim, FeatureDim] = ...
+
+a_t: TypedTensor[torch.FloatTensor, BatchDim, FeatureDim, SequenceDim] = (
+    a # TypedTensor[FloatTensor, BatchDim, SequenceDim, FeatureDim]
+    .transpose[SequenceDim, FeatureDim] # TypedTensor[FloatTensor, Z[Dimension], FeatureDim, Z[Dimension], SequenceDim]
+    .asinstanceof[TypedTensor[FloatTensor, BatchDim, FeatureDim, SequenceDim]]
+)
+```
+
+<!---
 ### `Shape[*Ds]`
 ### `Concat[D0, D1]`
 ### `Rec[D, F]`
