@@ -1,1 +1,1 @@
-from .functions import addmm, cat, stack, where
+from .functions import addmm, cat, column_stack, stack, where

@@ -61,6 +61,38 @@ stack[Batch](xs, dim=0)
 stack = _stack()
 
 
+class _column_stack:
+    def __getitem__[D: Dimension](self, tp: Type[D]):
+        @overload
+        def inner[DType: Tensor, D0](
+            xs: list[TypedTensor[DType, D0]],
+        ) -> TypedTensor[DType, D0, Rec[D, Concat]]: ...
+
+        @overload
+        def inner[DType: Tensor, D0, *Ds](
+            xs: list[TypedTensor[DType, D0, D, *Ds]],
+        ) -> TypedTensor[DType, D0, Rec[D, Concat], *Ds]: ...
+
+        def inner[DType: Tensor, D0, *Ds](
+            xs: list[TypedTensor[DType, D0, D, *Ds]] | list[TypedTensor[DType, D0]],
+        ) -> TypedTensor[DType, D0, Rec[D, Concat], *Ds] | TypedTensor[DType, D0, Rec[D, Concat]]:
+            dim = 1
+            args = list(xs[0].args)
+            index = dim + 1
+            args = args[:index] + [Rec[tp, Concat]] + args[index + 1:]
+            return TypedTensor(
+                cast(DType, torch.column_stack([x.tensor for x in xs])), tuple(args)
+            )
+
+        return inner
+
+
+"""
+column_stack[Sequence](xs)
+"""
+column_stack = _column_stack()
+
+
 def where[DType: Tensor, *Cs, *Is, *Os](
     condition: TypedTensor[BoolTensor, *Cs], input: TypedTensor[DType, *Is], other: TypedTensor[DType, *Os]
 ):
