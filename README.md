@@ -235,9 +235,52 @@ it can be nested in shape definition, e.g. `TypedTensor[Tensor, Batch, Seq, Head
 `TypedTensor[Tensor, Shape[Batch, Seq, Head, Feature]]`, `TypedTensor[Tensor, Shape[Shape[Batch, Seq], Shape[Head], Feature]]`
  ... are all equivalent.
 
+## Broadcasting
+
+### Semantics
+
+Broadcast semantics (see [pytorch-broadcasting](https://pytorch.org/docs/stable/notes/broadcasting.html))
+on type level are defined differently. Shapes are aligned from right to left. Dimension types from the 
+higher dimensional shape on the left that don't align with any dimension type from the lower dimensional
+shape are retruned as-is. For each pair of the aligned dimension types, the type with longer length is 
+returned given that the other has length 1, or otherwise the type which is super to the other type is 
+returned, or otherwise broadcasting fails.
+
+Currently broadcasting doesn't handle repeated dimensions. This is because repeated dimensions
+shouldn't be used at runtime. However, if this logic to be run at static type checking time,
+repeated dimensions must be handled somehow.
+
+### Broadcast [`Shape`, `Shape`]
+
+This is the type of a broadcasted shape, which is by itself a special dimension like `Shape`.
+Hence, it can be recursively nested to express broadcasted multiple shapes.
+
+```python
+def where[DType: Tensor, *Cs, *Is, *Os](
+    condition: TypedTensor[BoolTensor, *Cs],
+    input: TypedTensor[DType, *Is],
+    other: TypedTensor[DType, *Os]
+) -> TypedTensor[DType, Broadcast[Shape[Broadcast[Shape[*Cs], Shape[*Is]]], Shape[*Os]]]:
+    ...
+```
+
+`Broadcast` is a binary operation on shapes: `Shape x Shape -> Shape`. The static type system needs to evaluate
+that operation to decide on type equivalence and to infer shape types.
+
+### Sub [`T`]
+
+Sometimes it will be not straightforward or cumbersome to define the dimension type of a broadcastable tensor.
+For example, when applying a mask on a tensor `where(mask_bool, x, mask_value)`, if `mask_value` has dimensions
+different than `x` either in length per dimension or number of dimensions and we don't bother about dimension types
+of `mask_value`, shape of `mask_value` can be defined with sub-types of dimensions of `x`. Here, `Sub[D]` convinces
+the type system that `Sub[D]` is a sub-type of `D` and hence broadcasting can return `D`.
+
+```python
+x: TypedTensor[Tensor, Batch, Head, Seq1, Seq2] = ...
+mask_value: TypedTensor[Tensor, Sub[Seq2]] = ...
+```
+
 <!---
 ### `Concat[D0, D1]`
 ### `Rec[D, F]`
-### `Sub[T]`
-### `Broadcast[Shape, Shape]`)
 -->
