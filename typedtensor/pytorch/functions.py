@@ -1,4 +1,4 @@
-from typing import Type, cast
+from typing import Type, cast, overload
 
 import torch
 from torch import BoolTensor, Tensor
@@ -37,6 +37,28 @@ class _cat:
 cat[Seq](xs)
 """
 cat = _cat()
+
+
+class _stack:
+    def __getitem__[D: Dimension](self, tp: Type[D]):
+        def inner[DType: Tensor, *Ds](
+            xs: list[TypedTensor[DType, *Ds]],
+            dim: int = 0,
+        ) -> TypedTensor[DType, Z[Dimension], D, Z[Dimension]]:
+            args = [i for i in xs[0].args]
+            index = dim + 1
+            args = args[:index] + [tp] + args[index:]
+            return TypedTensor[DType, Z[Dimension], D, Z[Dimension]](
+                cast(DType, torch.stack([x.tensor for x in xs], dim=dim)), tuple(args)
+            )
+
+        return inner
+
+
+"""
+stack[Batch](xs, dim=0)
+"""
+stack = _stack()
 
 
 def where[DType: Tensor, *Cs, *Is, *Os](
