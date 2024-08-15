@@ -149,7 +149,7 @@ to static type safety.
 # Details
 
 ## Basic types
-### `Dimension`
+### Dimension
 A tensor shape is described by a sequence of dimension types.
 `Dimension` is the base class for all dimension types.
 For each dimension type, there should be a class extending directly or indirectly from `Dimension`.
@@ -171,7 +171,7 @@ semantic relations through type hierarchy. The ability to organize types in a hi
 to determine types equivalence relations which is essential to typing tensor operations demanding less
 complex features from the type system.
 
-### `TypedTensor[DType, *Ds]`
+### TypedTensor [`DType`, `*Ds`]
 `TypedTensor` is the typed wrapper for any `torch.Tensor`. It is parameterized by:
 - `DType`: which specifies the wrapped tensor type, e.g. `torch.Tensor` or `torch.FloatTensor`
 - `*Ds`: which is a variadic type variable of dimension types describing the order and types of tensor shape
@@ -187,7 +187,7 @@ Ideally shape dimensions should be unique, otherwise this can cause ambiguity ma
 Currently, `typedtensor` doesn't impose a uniqueness constrain on types of shape dimensions however this may be
 added in future.
 
-### `Z[D]`
+### Z [`D`]
 Zero or more dimensions! PEP 646 [doesn't allow multilpe variadic type variables](https://peps.python.org/pep-0646/#multiple-type-variable-tuples-not-allowed)
 nor it allows [multiple unpackings](https://peps.python.org/pep-0646/#multiple-unpackings-in-a-tuple-not-allowed).
 However, arbitrarly dimension picking operations, like transpose or concatenate, need to describe shape patterns
@@ -221,8 +221,21 @@ a_t: TypedTensor[torch.FloatTensor, BatchDim, FeatureDim, SequenceDim] = (
 )
 ```
 
+### Shape [`*Ds`]
+Holds specific dimension types. Useful to pass specific dimension types around as type arguments. Can be used to get
+around limitations of variadic type variables. E.g. functions parameterized by variadic type variables would
+capture the type of individual type parameters. For example, calling `fn[*Ds](*types: *Ds) -> TypedTensor[Tensor, *Ds]: ...`
+as `fn(Batch, Seq)` would return `TypedTensor[Tensor, Type[Batch], Type[Seq]]` however we would expect to be
+able to return `TypedTensor[Tensor, Batch, Seq]` instead. `typedtensor` uses `Shape` to get around this limitation.
+In our example, `fn` would be defined as `fn[*Ds](types: ShapeArgs[*Ds]) -> TypedTensor[Tensor, *Ds]: ...` and
+called as `fn(Shape[Batch, Seq])` to retrun `TypedTensor[Tensor, Batch, Seq]`.
+
+Also, `Shape` is treated as a special dimension that is equivalent to unpacked tuple `*Tuple[*Ds]`. Moreover,
+it can be nested in shape definition, e.g. `TypedTensor[Tensor, Batch, Seq, Head, Feature]`,
+`TypedTensor[Tensor, Shape[Batch, Seq, Head, Feature]]`, `TypedTensor[Tensor, Shape[Shape[Batch, Seq], Shape[Head], Feature]]`
+ ... are all equivalent.
+
 <!---
-### `Shape[*Ds]`
 ### `Concat[D0, D1]`
 ### `Rec[D, F]`
 ### `Sub[T]`
