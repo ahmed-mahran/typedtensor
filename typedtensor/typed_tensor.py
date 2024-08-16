@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import logging
+from abc import ABCMeta
+from functools import wraps
 from inspect import isclass
-from typing import Any, Callable, Optional, Tuple, Type, TypeGuard, cast, overload, override
+from types import FunctionType
+from typing import Any, Callable, Concatenate, Optional, Tuple, Type, TypeGuard, cast, overload, override
 
 import torch
 from torch import Size, Tensor
@@ -20,7 +23,44 @@ from .utils import CaptureTypeArgs, _is_tensor_subclass, _is_type_var_of_bound
 logger = logging.getLogger(__name__)
 
 
-class TypedTensor[DType: Tensor, *Dimensions](CaptureTypeArgs):
+class TypedTensorMeta(ABCMeta):
+    def __new__(cls, name, bases, namespace, **kwargs):
+        def _check_type_error(instance: TypedTensor):
+            if hasattr(instance, "_type_error") and (e := getattr(instance, "_type_error")) is not None:
+                raise e
+
+        def wrap_function[Self: TypedTensor, **P](method: Callable[Concatenate[Self, P], Any]):
+            @wraps(method)
+            def wrapped(instance: Self, *wargs: P.args, **wkwargs: P.kwargs):
+                _check_type_error(instance)
+                return method(instance, *wargs, **wkwargs)
+
+            return wrapped
+
+        def wrap_property[Self: TypedTensor](prop: property):
+            fget = None
+            if prop.fget is not None:
+
+                def wrapped(instance: Self):
+                    _check_type_error(instance)
+                    if prop.fget is not None:
+                        return prop.fget(instance)
+
+                fget = wrapped
+
+            return property(fget, prop.fset, prop.fdel, prop.__doc__)
+
+        new_namespace = {}
+        for attributeName, attribute in namespace.items():
+            if isinstance(attribute, FunctionType):
+                attribute = wrap_function(attribute)
+            elif isinstance(attribute, property):
+                attribute = wrap_property(attribute)
+            new_namespace[attributeName] = attribute
+        return super().__new__(cls, name, bases, new_namespace)
+
+
+class TypedTensor[DType: Tensor, *Dimensions](CaptureTypeArgs, metaclass=TypedTensorMeta):
     # When TypedTensor class is subscripted, a new _GenericAlias
     # is created which holds three special attributes for internal bookkeeping of generic types:
     # * __parameters__ is a tuple of unique free type parameters of a generic
