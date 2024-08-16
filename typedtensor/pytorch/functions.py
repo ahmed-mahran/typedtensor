@@ -1,4 +1,4 @@
-from typing import Type, cast, overload
+from typing import Type, cast, overload, Union
 
 import torch
 from torch import BoolTensor, Tensor
@@ -62,27 +62,26 @@ stack = _stack()
 
 
 class _column_stack:
-    def __getitem__[D: Dimension](self, tp: Type[D]):
+    def __getitem__[D1: Dimension](self, tp: Type[D1]):
         @overload
         def inner[DType: Tensor, D0](
-            xs: list[TypedTensor[DType, D0]],
-        ) -> TypedTensor[DType, D0, Rec[D, Concat]]: ...
+            xs: tuple[TypedTensor[DType, D0] | TypedTensor[DType, D0, D1], ...],
+        ) -> TypedTensor[DType, D0, Rec[D1, Concat]]: ...
 
         @overload
         def inner[DType: Tensor, D0, *Ds](
-            xs: list[TypedTensor[DType, D0, D, *Ds]],
-        ) -> TypedTensor[DType, D0, Rec[D, Concat], *Ds]: ...
+            xs: tuple[TypedTensor[DType, D0, D1, *Ds], ...],
+        ) -> TypedTensor[DType, D0, Rec[D1, Concat], *Ds]: ...
 
         def inner[DType: Tensor, D0, *Ds](
-            xs: list[TypedTensor[DType, D0, D, *Ds]] | list[TypedTensor[DType, D0]],
-        ) -> TypedTensor[DType, D0, Rec[D, Concat], *Ds] | TypedTensor[DType, D0, Rec[D, Concat]]:
+            xs: tuple[TypedTensor[DType, D0, D1, *Ds], ...]
+            | tuple[TypedTensor[DType, D0] | TypedTensor[DType, D0, D1], ...],
+        ) -> TypedTensor[DType, D0, Rec[D1, Concat], *Ds] | TypedTensor[DType, D0, Rec[D1, Concat]]:
+            args = list(max(map(lambda x: x.args, xs), key=len))
             dim = 1
-            args = list(xs[0].args)
             index = dim + 1
             args = args[:index] + [Rec[tp, Concat]] + args[index + 1:]
-            return TypedTensor(
-                cast(DType, torch.column_stack([x.tensor for x in xs])), tuple(args)
-            )
+            return TypedTensor(cast(DType, torch.column_stack([x.tensor for x in xs])), tuple(args))
 
         return inner
 
@@ -91,6 +90,50 @@ class _column_stack:
 column_stack[Sequence](xs)
 """
 column_stack = _column_stack()
+
+
+class _dstack:
+    def __getitem__[D2: Dimension](self, tp: Type[D2]):
+        @overload
+        def inner[DType: Tensor, D0](
+            xs: tuple[TypedTensor[DType, D0], ...],
+        ) -> TypedTensor[DType, Dimension, D0, Rec[D2, Concat]]: ...
+
+        @overload
+        def inner[DType: Tensor, D0, D1](
+            xs: tuple[TypedTensor[DType, D0, D1] | TypedTensor[DType, D0, D1, D2], ...],
+        ) -> TypedTensor[DType, D0, D1, Rec[D2, Concat]]: ...
+
+        @overload
+        def inner[DType: Tensor, D0, D1, *Ds](
+            xs: tuple[TypedTensor[DType, D0, D1, D2, *Ds], ...],
+        ) -> TypedTensor[DType, D0, D1, Rec[D2, Concat], *Ds]: ...
+
+        def inner[DType: Tensor, D0, D1, *Ds](
+            xs: tuple[TypedTensor[DType, D0, D1, D2, *Ds], ...]
+            | tuple[TypedTensor[DType, D0, D1] | TypedTensor[DType, D0, D1, D2], ...]
+            | tuple[TypedTensor[DType, D0], ...],
+        ) -> (
+            TypedTensor[DType, D0, D1, Rec[D2, Concat], *Ds]
+            | TypedTensor[DType, D0, D1, Rec[D2, Concat]]
+            | TypedTensor[DType, Dimension, D0, Rec[D2, Concat]]
+        ):
+            args = list(max(map(lambda x: x.args, xs), key=len))
+            if len(args) > 2:
+                dim = 2
+                index = dim + 1
+                args = args[:index] + [Rec[tp, Concat]] + args[index + 1:]
+            else:
+                args = [args[0], Dimension, args[1], Rec[tp, Concat]]
+            return TypedTensor(cast(DType, torch.dstack([x.tensor for x in xs])), tuple(args))
+
+        return inner
+
+
+"""
+dstack[Feature](xs)
+"""
+dstack = _dstack()
 
 
 def where[DType: Tensor, *Cs, *Is, *Os](
