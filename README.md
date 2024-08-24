@@ -267,17 +267,22 @@ def where[DType: Tensor, *Cs, *Is, *Os](
 `Broadcast` is a binary operation on shapes: `Shape x Shape -> Shape`. The static type system needs to evaluate
 that operation to decide on type equivalence and to infer shape types.
 
-### Sub [`T`]
+### Sub [`D`]
 
-Sometimes it will be not straightforward or cumbersome to define the dimension type of a broadcastable tensor.
-For example, when applying a mask on a tensor `where(mask_bool, x, mask_value)`, if `mask_value` has dimensions
-different than `x` either in length per dimension or number of dimensions and we don't bother about dimension types
-of `mask_value`, shape of `mask_value` can be defined with sub-types of dimensions of `x`. Here, `Sub[D]` convinces
-the type system that `Sub[D]` is a sub-type of `D` and hence broadcasting can return `D`.
+`Sub` convinces the type system that `Sub[D]` is a sub-type of `D`. This is for convinience to avoid defining
+redundant sub-types. Sometimes it will be cumbersome or not straightforward to define the dimension type of a
+broadcastable tensor. For example, when applying a mask on a tensor `x` using  `where(mask_bool, x, mask_value)`, if
+`mask_value` has dimensions different than `x` either in length per dimension or number of dimensions and we
+don't bother about dimension types of `mask_value`, shape of `mask_value` can be defined with sub-types of
+dimensions of `x`. `Sub[D]` can be used here to define shape of `mask_value` and hence broadcasting can return `D`.
 
 ```python
 x: TypedTensor[Tensor, Batch, Head, Seq1, Seq2] = ...
-mask_value: TypedTensor[Tensor, Sub[Seq2]] = ...
+mask_value: TypedTensor[Tensor, Sub[Seq2]] = ... # if we cannot use Seq2 here
+mask_bool: TypedTensor[BoolTensor, Sub[Seq1], Sub[Seq2]] = ... # if we cannot use Seq1 or Seq2 here
+masked_x = where(mask_bool, x, mask_value)
+reveal_type(masked_x) # TypedTensor[Tensor, Broadcast[Shape[Broadcast[Shape[Sub[Seq1], Sub[Seq2]], Shape[Batch, Head, Seq1, Seq2]]], Shape[Sub[Seq2]]]]
+masked_x.asinstanceof[TypedTensor[Tensor, Batch, Head, Seq1, Seq2]] # ACCEPTABLE
 ```
 
 <!---
