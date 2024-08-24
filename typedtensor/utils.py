@@ -314,7 +314,9 @@ def acc_sequence[A, B, C, Acc](
     returns accumulation of the first encountered accumulatable traversal.
     """
 
-    def step(i: int, j: int, acc: SequenceAccumulator[A, B, C, Acc], indent: str, left: List[A], right: List[B]):
+    def step(
+        i: int, j: int, acc: SequenceAccumulator[A, B, C, Acc], indent: str, left: List[A], right: List[B]
+    ) -> Optional[SequenceAccumulator[A, B, C, Acc]]:
         def line(content: str):
             logger.debug(f"{indent}{content}")
 

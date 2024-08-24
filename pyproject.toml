@@ -23,4 +23,3 @@ line-length = 120
 src = ["typedtensor", "examples"]
 fix = true
 show-fixes = true
-

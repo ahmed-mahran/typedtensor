@@ -1,9 +1,9 @@
-from typing import Type, Union, cast, overload
+from typing import Literal, Type, cast, overload
 
 import torch
 from torch import BoolTensor, Tensor
 
-from ..dimension import Concat, Dimension, Rec, Z
+from ..dimension import Concat, Dimension, Rec, Z, Sub
 from ..shape_info import Broadcast, Shape, ShapeInfo
 from ..typed_tensor import TypedTensor
 
@@ -189,7 +189,7 @@ class _vstack:
             | tuple[TypedTensor[DType, D1], ...],
         ) -> (
             TypedTensor[DType, Rec[D0, Concat], D1, *Ds]
-            | TypedTensor[DType, D0, Rec[D1, Concat]]
+            | TypedTensor[DType, Rec[D0, Concat], D1]
             | TypedTensor[DType, Rec[D0, Concat], D1]
         ):
             args = list(max(map(lambda x: x.args, xs), key=len))
@@ -213,6 +213,36 @@ row_stack = _vstack()
 vstack[Batch](xs)
 """
 vstack = _vstack()
+
+
+class _sum:
+    def __getitem__[D: Dimension](self, tp: Type[D]):
+        @overload
+        def inner[DType: Tensor, *Init, *Tail](
+            x: TypedTensor[DType, *Init, D, *Tail], keepdim: Literal[True]
+        ) -> TypedTensor[DType, *Init, Sub[D], *Tail]: ...
+
+        @overload
+        def inner[DType: Tensor, *Init, *Tail](
+            x: TypedTensor[DType, *Init, D, *Tail], keepdim: Literal[False]
+        ) -> TypedTensor[DType, *Init, *Tail]: ...
+
+        def inner[DType: Tensor, *Init, *Tail](
+            x: TypedTensor[DType, *Init, D, *Tail], keepdim: Literal[False] | Literal[True]
+        ) -> TypedTensor[DType, *Init, *Tail] | TypedTensor[DType, *Init, Sub[D], *Tail]:
+            args = list(x.args)
+            dim = x.dim[tp]
+            index = dim + 1
+            args = args[:index] + ([Sub[tp]] if keepdim else []) + args[index + 1 :]
+            return TypedTensor(cast(DType, torch.sum(x.tensor, dim=dim, keepdim=keepdim)), tuple(args))
+
+        return inner
+
+
+"""
+sum[D](xs)
+"""
+sum = _sum()
 
 
 def where[DType: Tensor, *Cs, *Is, *Os](
