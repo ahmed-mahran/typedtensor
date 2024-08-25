@@ -7,6 +7,12 @@ This is an opportunity to challenge python's static typing capabilities to expre
 
 This also can mostly serve pedagogical puposes teaching and learning neural networks.
 
+---
+**<p style="text-align: center;">\*\*\*\* NOTE \*\*\*\*</p>**
+This goes hand in hand with [MyPyright](https://github.com/ahmed-mahran/pyright) as it depends on features **NOT** yet supported by [python typing PEPs](https://peps.python.org/topic/typing/).
+
+---
+
 # Example
 
 Before ...
@@ -23,10 +29,7 @@ A little bit more ...
 
 ```python
 from torch import (Tensor, FloatTensor)
-from typedtensor import (
-  Dimension,
-  Z,
-)
+from typedtensor import Dimension
 
 ...
 
@@ -37,18 +40,18 @@ class SequenceDim(Dimension): pass
 class FeatureDim(Dimension): pass
 
 # matmul method signature defined in TypedTensor
-# Z[Dimension] corresponds to a variadic generic which implies zero or
+# *Ds is a variadic generic which implies zero or
 # more Dimensions
-def matmul[D0, D1, D2](
-    self: TypedTensor[DType, Z[Dimension], D0, D1],
-    other: TypedTensor[DType, Z[Dimension], D1, D2],
-) -> TypedTensor[DType, Z[Dimension], D0, D2]:
+def matmul[*Ds, D0, D1, D2](
+    self: TypedTensor[DType, *Ds, D0, D1],
+    other: TypedTensor[DType, *Ds, D1, D2],
+) -> TypedTensor[DType, *Ds, D0, D2]:
     ...
 
 # this approximates transpose method signature in TypedTensor
-def transpose[D0, D1](
-    self: TypedTensor[DType, Z[Dimension], D0, Z[Dimension], D1, Z[Dimension]],
-) -> TypedTensor[DType, Z[Dimension], D1, Z[Dimension], D0, Z[Dimension]]:
+def transpose[*Init, D0, *Mid, D1, *Tail](
+    self: TypedTensor[DType, *Init, D0, *Mid, D1, *Tail],
+) -> TypedTensor[DType, *Init, D1, *Mid, D0, *Tail]:
     ...
 
 a = TypedTensor[torch.FloatTensor, BatchDim, SequenceDim, FeatureDim](cast(torch.FloatTensor, torch.randn(128, 1024, 768)))
@@ -59,51 +62,21 @@ b = TypedTensor[torch.FloatTensor, BatchDim, SequenceDim, FeatureDim](cast(torch
 # TypedTensor[torch.FloatTensor, BatchDim, SequenceDim, SequenceDim]
 w = (
     a # TypedTensor[FloatTensor, BatchDim, SequenceDim, FeatureDim]
-    .as_z_d0_d1[SequenceDim, FeatureDim] # TypedTensor[FloatTensor, Z[Dimension], SequenceDim, FeatureDim]
-    .matmul(
-        b # TypedTensor[FloatTensor, BatchDim, SequenceDim, FeatureDim]
-        .transpose[SequenceDim, FeatureDim] # TypedTensor[FloatTensor, Z[Dimension], FeatureDim, Z[Dimension], SequenceDim]
-        .as_z_d0_d1[FeatureDim, SequenceDim] # TypedTensor[FloatTensor, Z[Dimension], FeatureDim, SequenceDim]
-    )  # TypedTensor[FloatTensor, Z[Dimension], SequenceDim, SequenceDim]
-).asinstanceof[TypedTensor[torch.FloatTensor, BatchDim, SequenceDim, SequenceDim]]
-```
-
-Ideally ...
-
-```python
-class BatchDim(Dimension, length=128): pass
-class SequenceDim(Dimension): pass
-class FeatureDim(Dimension): pass
-
-def matmul[*Ds, D0, D1, D2](
-    self: TypedTensor[DType, *Ds, D0, D1],
-    other: TypedTensor[DType, *Ds, D1, D2],
-) -> TypedTensor[DType, *Ds, D0, D2]:
-    ...
-
-def transpose[*PreDs, *MidDs, *PostDs, D0, D1](
-    self: TypedTensor[DType, *PreDs, D0, *MidDs, D1, *PostDs],
-) -> TypedTensor[DType, *PreDs, D1, *MidDs, D0, *PostDs]:
-    ...
-
-a = TypedTensor[torch.FloatTensor, BatchDim, SequenceDim, FeatureDim](cast(torch.FloatTensor, torch.randn(128, 1024, 768)))
-b = TypedTensor[torch.FloatTensor, BatchDim, SequenceDim, FeatureDim](cast(torch.FloatTensor, torch.randn(128, 1024, 768)))
-
-
-# TypedTensor[torch.FloatTensor, BatchDim, SequenceDim, SequenceDim]
-w = (
-    a # TypedTensor[FloatTensor, BatchDim, SequenceDim, FeatureDim]
     .matmul(
         b # TypedTensor[FloatTensor, BatchDim, SequenceDim, FeatureDim]
         .transpose[SequenceDim, FeatureDim] # TypedTensor[FloatTensor, BatchDim, FeatureDim, SequenceDim]
-    )  # TypedTensor[torch.FloatTensor, BatchDim, SequenceDim, SequenceDim]
+    )  # TypedTensor[FloatTensor, BatchDim, SequenceDim, SequenceDim]
 )
 ```
 
 Even more, see [typed GPT2](examples/ttransformers/models/gpt2/modeling_gpt2.py) ...
 # Install
 
-**NOTE:** This package is best compatible with `Pyright` and `VSCode`.
+---
+**<p style="text-align: center;">\*\*\*\* NOTE \*\*\*\*</p>**
+This package is best compatible with [`MyPyright`](https://marketplace.visualstudio.com/items?itemName=mashin.mypyright) and `VSCode`. Otherwise, other static type checkers will generate errors as `typedtensors` depends on features NOT yet supported by [python typing PEPs](https://peps.python.org/topic/typing/).
+
+---
 
 `typedtensor` is not yet published however if you want to give it a try locally:
 
@@ -187,39 +160,7 @@ Ideally shape dimensions should be unique, otherwise this can cause ambiguity ma
 Currently, `typedtensor` doesn't impose a uniqueness constrain on types of shape dimensions however this may be
 added in future.
 
-### Z [`D`]
-Zero or more dimensions! PEP 646 [doesn't allow multilpe variadic type variables](https://peps.python.org/pep-0646/#multiple-type-variable-tuples-not-allowed)
-nor it allows [multiple unpackings](https://peps.python.org/pep-0646/#multiple-unpackings-in-a-tuple-not-allowed).
-However, arbitrarly dimension picking operations, like transpose or concatenate, need to describe shape patterns
-with more than one wildcard. For example, consider the transpose operation:
-```python
-def transpose[*PreDs, *MidDs, *PostDs, D0, D1](
-    self: TypedTensor[DType, *PreDs, D0, *MidDs, D1, *PostDs],
-) -> TypedTensor[DType, *PreDs, D1, *MidDs, D0, *PostDs]:
-    ...
-```
-Transpose swaps any two dimensions `D0` and `D1`. The input tensor should be of the form `TypedTensor[DType, *PreDs, D0, *MidDs, D1, *PostDs]`
-while the output tensor should be of the same form but with `D0` and `D1` swapped `TypedTensor[DType, *PreDs, D1, *MidDs, D0, *PostDs]`.
-It is currently not possibel to write such type patterns in python. So, `Z` is coming to fulfill this need and
-hopefully temporarily!
-```python
-def transpose[D0, D1](
-    self: TypedTensor[DType, Z[Dimension], D0, Z[Dimension], D1, Z[Dimension]],
-) -> TypedTensor[DType, Z[Dimension], D1, Z[Dimension], D0, Z[Dimension]]:
-    ...
-```
-This comes with an extra cost and redundancy as we need explicit type casting to convince the type checker that
-a typed tensor is of a certain shape pattern. E.g. in order to use transposed tensor, it should first be cast to
-the suitable shape pattern.
-```python
-a: TypedTensor[FloatTensor, BatchDim, SequenceDim, FeatureDim] = ...
 
-a_t: TypedTensor[torch.FloatTensor, BatchDim, FeatureDim, SequenceDim] = (
-    a # TypedTensor[FloatTensor, BatchDim, SequenceDim, FeatureDim]
-    .transpose[SequenceDim, FeatureDim] # TypedTensor[FloatTensor, Z[Dimension], FeatureDim, Z[Dimension], SequenceDim]
-    .asinstanceof[TypedTensor[FloatTensor, BatchDim, FeatureDim, SequenceDim]]
-)
-```
 
 ### Shape [`*Ds`]
 Holds specific dimension types. Useful to pass specific dimension types around as type arguments. Can be used to get
@@ -289,3 +230,37 @@ masked_x.asinstanceof[TypedTensor[Tensor, Batch, Head, Seq1, Seq2]] # ACCEPTABLE
 ### `Concat[D0, D1]`
 ### `Rec[D, F]`
 -->
+
+# New typing requirements
+## Multiple Variadic Generics
+Multiple zero or more dimensions! PEP 646 [doesn't allow multilpe variadic type variables](https://peps.python.org/pep-0646/#multiple-type-variable-tuples-not-allowed)
+nor it allows [multiple unpackings](https://peps.python.org/pep-0646/#multiple-unpackings-in-a-tuple-not-allowed).
+However, arbitrarly dimension picking operations, like transpose or concatenate, need to describe shape patterns
+with more than one wildcard. For example, consider the transpose operation:
+```python
+def transpose[*PreDs, *MidDs, *PostDs, D0, D1](
+    self: TypedTensor[DType, *PreDs, D0, *MidDs, D1, *PostDs],
+) -> TypedTensor[DType, *PreDs, D1, *MidDs, D0, *PostDs]:
+    ...
+```
+Transpose swaps any two dimensions `D0` and `D1`. The input tensor should be of the form `TypedTensor[DType, *PreDs, D0, *MidDs, D1, *PostDs]`
+while the output tensor should be of the same form but with `D0` and `D1` swapped `TypedTensor[DType, *PreDs, D1, *MidDs, D0, *PostDs]`.
+It is currently not possibel to write such type patterns in python. `typedtensor` tried to implement a new generic type, `Z[D]`, which corresponds to zero or more dimensions to fulfill this need
+```python
+def transpose[D0, D1](
+    self: TypedTensor[DType, Z[Dimension], D0, Z[Dimension], D1, Z[Dimension]],
+) -> TypedTensor[DType, Z[Dimension], D1, Z[Dimension], D0, Z[Dimension]]:
+    ...
+```
+This comes with an extra cost and redundancy as we need explicit type casting to convince the type checker that
+a typed tensor is of a certain shape pattern. E.g. in order to use transposed tensor, it should first be cast to
+the suitable shape pattern.
+```python
+a: TypedTensor[FloatTensor, BatchDim, SequenceDim, FeatureDim] = ...
+
+a_t: TypedTensor[torch.FloatTensor, BatchDim, FeatureDim, SequenceDim] = (
+    a # TypedTensor[FloatTensor, BatchDim, SequenceDim, FeatureDim]
+    .transpose[SequenceDim, FeatureDim] # TypedTensor[FloatTensor, Z[Dimension], FeatureDim, Z[Dimension], SequenceDim]
+    .asinstanceof[TypedTensor[FloatTensor, BatchDim, FeatureDim, SequenceDim]]
+)
+```
