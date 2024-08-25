@@ -10,7 +10,7 @@ from typing import Any, List, Optional, Tuple, Type, TypeGuard, TypeVar, TypeVar
 
 from torch import Size, Tensor
 
-from .dimension import Concat, Dimension, Rec, Sub, Z
+from .dimension import Concat, Dimension, Rec, Sub
 from .utils import (
     CapturedTypeArgs,
     _is_generic_type,
@@ -605,12 +605,12 @@ def _unpack_recognize_arg(arg: Any) -> List[DimensionArgInfo]:
         func = _unpack_recognize_arg(rec_args[1])[0]
         if isinstance(base, NestableDimensionArgInfo) and isinstance(func, FunctorDimensionArgInfo):
             return [RecDimensionArgInfo(base=base, func=func, origin=arg)]
-    # [..., arg = Z[T], ...]
-    elif _is_generic_type(arg, Z):
-        # base = T = arg.__args__[0]
-        base = _unpack_recognize_arg(getattr(arg, "__args__")[0])[0]
-        if isinstance(base, NestableDimensionArgInfo):
-            return [RepeatedDimensionArgInfo(base, origin=arg)]
+    # # [..., arg = Z[T], ...]
+    # elif _is_generic_type(arg, Z):
+    #     # base = T = arg.__args__[0]
+    #     base = _unpack_recognize_arg(getattr(arg, "__args__")[0])[0]
+    #     if isinstance(base, NestableDimensionArgInfo):
+    #         return [RepeatedDimensionArgInfo(base, origin=arg)]
     # [..., arg = *Ts | *Tuple[...], ...]
     elif issubclass(type(arg), _Unpack_type) or issubclass(type(arg), types.GenericAlias):
         unpacked = getattr(arg, "__args__")[0] if issubclass(type(arg), _Unpack_type) else arg

@@ -1,4 +1,4 @@
-from .dimension import Concat, Dimension, Rec, Sub, Z, dimension
+from .dimension import Concat, Dimension, Rec, Sub, dimension
 from .shape_info import (
     AbstractDimensionArgInfo,
     Broadcast,

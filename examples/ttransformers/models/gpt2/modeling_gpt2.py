@@ -33,7 +33,7 @@ from transformers import (
     GPT2Config,
     PreTrainedModel,
 )
-from typedtensor import Dimension, Shape, Sub, TypedTensor, Z
+from typedtensor import Dimension, Shape, Sub, TypedTensor
 from typedtensor import pytorch as ttorch
 from typedtensor.pytorch import nn as tnn
 
@@ -239,8 +239,7 @@ class GPT2QueryKeyValueProjection[DType: Tensor](GPT2QueryKeyValueProjectionBase
         hidden_states: HiddenStatesTypedTensor[DType],
         encoder_hidden_states: Optional[HiddenStatesTypedTensor[DType]] = None,
     ) -> Tuple[HiddenStatesTypedTensor[DType], HiddenStatesTypedTensor[DType], HiddenStatesTypedTensor[DType]]:
-        hidden_states_for_c_attn = hidden_states.as_z_d0[FeatureDim]
-        query, key, value = self.c_attn.forward(hidden_states_for_c_attn).tensor.split(self.split_size, dim=2)
+        query, key, value = self.c_attn.forward(hidden_states).tensor.split(self.split_size, dim=2)
         return (
             TypedTensor[DType, BatchDim, SequenceDim, FeatureDim](query),
             TypedTensor[DType, BatchDim, SequenceDim, FeatureDim](key),
@@ -264,10 +263,8 @@ class GPT2QueryKeyValueCrossAttentionProjection[DType: Tensor](GPT2QueryKeyValue
         encoder_hidden_states: Optional[HiddenStatesTypedTensor[DType]] = None,
     ) -> Tuple[HiddenStatesTypedTensor[DType], HiddenStatesTypedTensor[DType], HiddenStatesTypedTensor[DType]]:
         if encoder_hidden_states is not None:
-            hidden_states_for_q_attn = hidden_states.as_z_d0[FeatureDim]
-            query = self.q_attn.forward(hidden_states_for_q_attn)
-            encoder_hidden_states_for_c_attn = encoder_hidden_states.as_z_d0[FeatureDim]
-            key, value = self.c_attn.forward(encoder_hidden_states_for_c_attn).tensor.split(self.split_size, dim=2)
+            query = self.q_attn.forward(hidden_states)
+            key, value = self.c_attn.forward(encoder_hidden_states).tensor.split(self.split_size, dim=2)
             return TypedTensor(query.tensor), TypedTensor(key), TypedTensor(value)
         else:
             raise ValueError("encoder_hidden_states must not be None")
@@ -333,15 +330,7 @@ class GPT2Attention[DType: Tensor](nn.Module):
         # capturing runtime type
         _PastAndCurrentSequenceDim = key.args[1:][key.dim[PastAndCurrentSequenceDim]]
 
-        attn_weights = (
-            query.as_z_d0_d1[Shape[SequenceDim, HeadFeatureDim]]
-            .matmul(
-                key.transpose[Shape[PastAndCurrentSequenceDim, HeadFeatureDim]].as_z_d0_d1[
-                    Shape[HeadFeatureDim, PastAndCurrentSequenceDim]
-                ]
-            )
-            .shaped[Shape[BatchDim, HeadDim, SequenceDim, PastAndCurrentSequenceDim]]
-        )
+        attn_weights = query.matmul(ttorch.transpose[Shape[PastAndCurrentSequenceDim, HeadFeatureDim]](key))
 
         if self.scale_attn_weights:
             # value.size(-1) = head_features
@@ -407,11 +396,7 @@ class GPT2Attention[DType: Tensor](nn.Module):
         # (batch, head, seq_length, past_seq_length + seq_length)
         # x (batch, head, past_seq_length + seq_length, head_features)
         # = (batch, head, seq_length, head_features)
-        attn_output = (
-            attn_weights.as_z_d0_d1[Shape[SequenceDim, PastAndCurrentSequenceDim]]
-            .matmul(value.as_z_d0_d1[Shape[PastAndCurrentSequenceDim, HeadFeatureDim]])
-            .shaped[Shape[BatchDim, HeadDim, SequenceDim, HeadFeatureDim]]
-        )
+        attn_output = attn_weights.matmul(value)
 
         return attn_output, attn_weights
 
@@ -522,10 +507,10 @@ class GPT2Attention[DType: Tensor](nn.Module):
         past_and_current_value: HeadsHiddenStatesTypedTensor[DType, PastSequenceDim]
         if layer_past is not None:
             past_and_current_key = ttorch.cat[_SequenceDim](
-                [layer_past.key.as_z_d0_z[_SequenceDim], key.as_z_d0_z[_SequenceDim]]
+                [layer_past.key, key]
             ).shaped[Shape[BatchDim, HeadDim, PastSequenceDim, HeadFeatureDim]]
             past_and_current_value = ttorch.cat[_SequenceDim](
-                [layer_past.value.as_z_d0_z[_SequenceDim], value.as_z_d0_z[_SequenceDim]]
+                [layer_past.value, value]
             ).shaped[Shape[BatchDim, HeadDim, PastSequenceDim, HeadFeatureDim]]
         else:
             past_and_current_key = key.shaped[Shape[BatchDim, HeadDim, PastSequenceDim, HeadFeatureDim]]
@@ -539,7 +524,7 @@ class GPT2Attention[DType: Tensor](nn.Module):
         )
 
         attn_output = self._merge_heads(attn_output, self.num_heads, self.head_dim)
-        attn_output = self.c_proj.forward(attn_output.as_z_d0[FeatureDim]).shaped[
+        attn_output = self.c_proj.forward(attn_output).shaped[
             Shape[BatchDim, SequenceDim, FeatureDim]
         ]
 
@@ -559,7 +544,7 @@ class GPT2MLP[DType: Tensor, Inner, D](nn.Module):
         self.c_proj = tnn.Conv1D[DType, Inner, D](input_length=intermediate_size, output_length=embed_dim)
         self.act = GPT2MlpGELUActivation[DType]()
 
-    def forward(self, hidden_states: TypedTensor[DType, Z[Dimension], D]) -> TypedTensor[DType, Z[Dimension], D]:
+    def forward[*Ds](self, hidden_states: TypedTensor[DType, *Ds, D]) -> TypedTensor[DType, *Ds, D]:
         dtype, inner, d = self.__orig_class__.__args__
         hidden_states_0 = self.c_fc.forward(hidden_states)
         hidden_states_1 = self.act.forward(hidden_states_0)
@@ -811,12 +796,12 @@ class GPT2Model[DType: Tensor](GPT2PreTrainedModel[DType]):
 
         if inputs_embeds is None:
             if input_ids is not None:
-                inputs_embeds = self.wte.forward(input_ids.as_z_d0[SequenceDim]).shaped[
+                inputs_embeds = self.wte.forward(input_ids).shaped[
                     Shape[BatchDim, SequenceDim, FeatureDim]
                 ]
             else:
                 raise ValueError()
-        position_embeds = self.wpe.forward(position_ids.as_z_d0[SequenceDim]).shaped[
+        position_embeds = self.wpe.forward(position_ids).shaped[
             Shape[BatchDim, SequenceDim, FeatureDim]
         ]
         hidden_states = inputs_embeds + cast(DType, position_embeds.tensor)
@@ -858,7 +843,7 @@ class GPT2Model[DType: Tensor](GPT2PreTrainedModel[DType]):
         _head_mask = self.get_head_mask(head_mask, self.config.n_layer)
 
         if token_type_ids is not None:
-            token_type_embeds = self.wte.forward(token_type_ids.as_z_d0[SequenceDim]).shaped[
+            token_type_embeds = self.wte.forward(token_type_ids).shaped[
                 Shape[BatchDim, SequenceDim, FeatureDim]
             ]
             hidden_states = hidden_states + token_type_embeds.tensor
@@ -1109,3 +1094,5 @@ if __name__ == "__main__":
     assert subject_res.past_key_values is not None and baseline_res.past_key_values is not None
     assert torch.equal(subject_res.past_key_values[0].key.tensor, baseline_res.past_key_values[0][0])
     assert torch.equal(subject_res.past_key_values[0].value.tensor, baseline_res.past_key_values[0][1])  # type: ignore
+
+    print("OK")

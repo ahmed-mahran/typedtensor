@@ -10,7 +10,7 @@ from typing import Any, Callable, Concatenate, Optional, Tuple, Type, TypeGuard,
 import torch
 from torch import Size, Tensor
 
-from .dimension import Dimension, Z
+from .dimension import Dimension
 from .shape_info import (
     Shape,
     ShapeArgs,
@@ -77,7 +77,7 @@ class TypedTensor[DType: Tensor, *Dimensions](CaptureTypeArgs, metaclass=TypedTe
     #
     # __orig_class__ attribute on any TypedTensor instance is not available
     # during __init__ method
-    _self_: Optional[TypedTensor[DType, Z[Dimension]]] = None
+    _self_: Optional[TypedTensor[DType, *Dimensions]] = None
     _type_error: Optional[Exception] = None
 
     _args: Optional[Tuple[type, ...]] = None
@@ -85,7 +85,7 @@ class TypedTensor[DType: Tensor, *Dimensions](CaptureTypeArgs, metaclass=TypedTe
     _typed_args: Optional[Tuple[Type[Tensor], ShapeInfo]] = None
 
     @property
-    def _self(self) -> TypedTensor[DType, Z[Dimension]]:
+    def _self(self) -> TypedTensor[DType, *Dimensions]:
         if self._type_error is not None:
             raise self._type_error
         if self._self_ is not None:
@@ -187,73 +187,73 @@ class TypedTensor[DType: Tensor, *Dimensions](CaptureTypeArgs, metaclass=TypedTe
     ) -> TypedTensor._Shaped[T]:
         return TypedTensor._Shaped[T](self)
 
-    class _As_Z_D0[T: Tensor]:
-        def __init__(self, o: TypedTensor[T, *Dimensions]):
-            self.o = o
+    # class _As_Z_D0[T: Tensor]:
+    #     def __init__(self, o: TypedTensor[T, *Dimensions]):
+    #         self.o = o
 
-        def __getitem__[D0](self, item: Type[D0]) -> TypedTensor[T, Z[Dimension], D0]:
-            tp = TypedTensor[T, Z[Dimension], D0]
-            tp_args = (self.o.args[0], Z[Dimension], item)
-            setattr(tp, "__args__", tp_args)
-            return self.o.asinstanceof(tp)
+    #     def __getitem__[D0](self, item: Type[D0]) -> TypedTensor[T, Z[Dimension], D0]:
+    #         tp = TypedTensor[T, Z[Dimension], D0]
+    #         tp_args = (self.o.args[0], Z[Dimension], item)
+    #         setattr(tp, "__args__", tp_args)
+    #         return self.o.asinstanceof(tp)
 
-    @property
-    def as_z_d0[T: Tensor](
-        self: TypedTensor[T, *Dimensions],
-    ) -> TypedTensor._As_Z_D0[T]:
-        return TypedTensor._As_Z_D0[T](self)
+    # @property
+    # def as_z_d0[T: Tensor](
+    #     self: TypedTensor[T, *Dimensions],
+    # ) -> TypedTensor._As_Z_D0[T]:
+    #     return TypedTensor._As_Z_D0[T](self)
 
-    class _As_Z_D0_D1[T: Tensor]:
-        def __init__(self, o: TypedTensor[T, *Dimensions]):
-            self.o = o
+    # class _As_Z_D0_D1[T: Tensor]:
+    #     def __init__(self, o: TypedTensor[T, *Dimensions]):
+    #         self.o = o
 
-        def __getitem__[D0, D1](self, item: ShapeArgs[D0, D1]) -> TypedTensor[T, Z[Dimension], D0, D1]:
-            tp = TypedTensor[T, Z[Dimension], D0, D1]
-            d0, d1 = Shape.types_from(item)
-            tp_args = (self.o.args[0], Z[Dimension], d0, d1)
-            setattr(tp, "__args__", tp_args)
-            return self.o.asinstanceof(tp)
+    #     def __getitem__[D0, D1](self, item: ShapeArgs[D0, D1]) -> TypedTensor[T, Z[Dimension], D0, D1]:
+    #         tp = TypedTensor[T, Z[Dimension], D0, D1]
+    #         d0, d1 = Shape.types_from(item)
+    #         tp_args = (self.o.args[0], Z[Dimension], d0, d1)
+    #         setattr(tp, "__args__", tp_args)
+    #         return self.o.asinstanceof(tp)
 
-    @property
-    def as_z_d0_d1[T: Tensor](
-        self: TypedTensor[T, *Dimensions],
-    ) -> TypedTensor._As_Z_D0_D1[T]:
-        return TypedTensor._As_Z_D0_D1[T](self)
+    # @property
+    # def as_z_d0_d1[T: Tensor](
+    #     self: TypedTensor[T, *Dimensions],
+    # ) -> TypedTensor._As_Z_D0_D1[T]:
+    #     return TypedTensor._As_Z_D0_D1[T](self)
 
-    class _As_Z_D0_Z[T: Tensor]:
-        def __init__(self, o: TypedTensor[T, *Dimensions]):
-            self.o = o
+    # class _As_Z_D0_Z[T: Tensor]:
+    #     def __init__(self, o: TypedTensor[T, *Dimensions]):
+    #         self.o = o
 
-        def __getitem__[D0](self, item: Type[D0]) -> TypedTensor[T, Z[Dimension], D0, Z[Dimension]]:
-            tp = TypedTensor[T, Z[Dimension], D0, Z[Dimension]]
-            tp_args = (self.o.args[0], Z[Dimension], item, Z[Dimension])
-            setattr(tp, "__args__", tp_args)
-            return self.o.asinstanceof(tp)
+    #     def __getitem__[D0](self, item: Type[D0]) -> TypedTensor[T, Z[Dimension], D0, Z[Dimension]]:
+    #         tp = TypedTensor[T, Z[Dimension], D0, Z[Dimension]]
+    #         tp_args = (self.o.args[0], Z[Dimension], item, Z[Dimension])
+    #         setattr(tp, "__args__", tp_args)
+    #         return self.o.asinstanceof(tp)
 
-    @property
-    def as_z_d0_z[T: Tensor](
-        self: TypedTensor[T, *Dimensions],
-    ) -> TypedTensor._As_Z_D0_Z[T]:
-        return TypedTensor._As_Z_D0_Z[T](self)
+    # @property
+    # def as_z_d0_z[T: Tensor](
+    #     self: TypedTensor[T, *Dimensions],
+    # ) -> TypedTensor._As_Z_D0_Z[T]:
+    #     return TypedTensor._As_Z_D0_Z[T](self)
 
-    class _As_Z_D0_Z_D1_Z[T: Tensor]:
-        def __init__(self, o: TypedTensor[T, *Dimensions]):
-            self.o = o
+    # class _As_Z_D0_Z_D1_Z[T: Tensor]:
+    #     def __init__(self, o: TypedTensor[T, *Dimensions]):
+    #         self.o = o
 
-        def __getitem__[D0, D1](
-            self, item: ShapeArgs[D0, D1]
-        ) -> TypedTensor[T, Z[Dimension], D0, Z[Dimension], D1, Z[Dimension]]:
-            tp = TypedTensor[T, Z[Dimension], D0, Z[Dimension], D1, Z[Dimension]]
-            d0, d1 = Shape.types_from(item)
-            tp_args = (self.o.args[0], Z[Dimension], d0, Z[Dimension], d1, Z[Dimension])
-            setattr(tp, "__args__", tp_args)
-            return self.o.asinstanceof(tp)
+    #     def __getitem__[D0, D1](
+    #         self, item: ShapeArgs[D0, D1]
+    #     ) -> TypedTensor[T, Z[Dimension], D0, Z[Dimension], D1, Z[Dimension]]:
+    #         tp = TypedTensor[T, Z[Dimension], D0, Z[Dimension], D1, Z[Dimension]]
+    #         d0, d1 = Shape.types_from(item)
+    #         tp_args = (self.o.args[0], Z[Dimension], d0, Z[Dimension], d1, Z[Dimension])
+    #         setattr(tp, "__args__", tp_args)
+    #         return self.o.asinstanceof(tp)
 
-    @property
-    def as_z_d0_z_d1_z[T: Tensor](
-        self: TypedTensor[T, *Dimensions],
-    ) -> TypedTensor._As_Z_D0_Z_D1_Z[T]:
-        return TypedTensor._As_Z_D0_Z_D1_Z[T](self)
+    # @property
+    # def as_z_d0_z_d1_z[T: Tensor](
+    #     self: TypedTensor[T, *Dimensions],
+    # ) -> TypedTensor._As_Z_D0_Z_D1_Z[T]:
+    #     return TypedTensor._As_Z_D0_Z_D1_Z[T](self)
 
     class _IsInstanceOf:
         def __init__(self, o):
@@ -269,7 +269,7 @@ class TypedTensor[DType: Tensor, *Dimensions](CaptureTypeArgs, metaclass=TypedTe
     @staticmethod
     def assert_valid_typed_tensor[T: Tensor, *Ds](
         tensor: TypedTensor[T, *Ds],
-    ) -> TypeGuard[TypedTensor[T, Z[Dimension]]]:
+    ) -> TypeGuard[TypedTensor[T, *Ds]]:
         _, _ = tensor.typed_args
         return True
 
@@ -277,36 +277,52 @@ class TypedTensor[DType: Tensor, *Dimensions](CaptureTypeArgs, metaclass=TypedTe
         _, shape_info = self.typed_args
         return f"{shape_info}: {self.tensor}"
 
-    def matmul[D0, D1, D2](
-        self: TypedTensor[DType, Z[Dimension], D0, D1],
-        other: TypedTensor[DType, Z[Dimension], D1, D2],
-    ) -> TypedTensor[DType, Z[Dimension], D0, D2]:
+    def matmul[*Ds, D0, D1, D2](
+        self: TypedTensor[DType, *Ds, D0, D1],
+        other: TypedTensor[DType, *Ds, D1, D2],
+    ) -> TypedTensor[DType, *Ds, D0, D2]:
         args = self.args[:-1] + (other.args[-1],)
         return TypedTensor(cast(DType, self.tensor.matmul(other.tensor)), args)
 
-    class _Transpose[_DType: Tensor]:
-        def __init__(self, o):
-            self.o = o
+    # It is currently hard to implement transpose as a method. We need a way to capture D0 and D1 before matching self
+    # shape [*Init, D0, *Mid, D1, *Tail], this is currently impossible as self always comes first, hence D0 and D1
+    # will be arbirarily captured from shape and not from exiplicitly passed types.
+    # E.g. in transpose(self: [*Init, D0, *Mid, D1, *Tail], d0: Type[D0], d1: Type[D1]).
+    # Subscriptable methods/functions is a possible solution, where caller needs to specify D0 and D1 first
+    # before passing call parameters: transpose[D0, D1]()
+    # 
+    # class _Transpose[_DType: Tensor]:
+    #     def __init__(self, o):
+    #         self.o = o
 
-        def __getitem__[D0, D1](
-            self, shape: ShapeArgs[D0, D1]
-        ) -> TypedTensor[_DType, Z[Dimension], D1, Z[Dimension], D0, Z[Dimension]]:
-            d0, d1 = Shape.types_from(shape)
-            dim0, dim1 = tuple([self.o.dim[tp] for tp in (d0, d1)])
-            return self(cast(Type[D0], d0), cast(Type[D1], d1), dim0, dim1)
+    #     def __getitem__[*Init, D0, *Mid, D1, *Tail](
+    #         self, shape: ShapeArgs[D0, D1]
+    #     ) -> TypedTensor[_DType, *Init, D1, *Mid, D0, *Tail]:
+    #         d0, d1 = Shape.types_from(shape)
+    #         dim0, dim1 = tuple([self.o.dim[tp] for tp in (d0, d1)])
+    #         return self(cast(Type[D0], d0), cast(Type[D1], d1), dim0, dim1)
 
-        def __call__[D0, D1](
-            self, d0: Type[D0], d1: Type[D1], dim0: int, dim1: int
-        ) -> TypedTensor[_DType, Z[Dimension], D1, Z[Dimension], D0, Z[Dimension]]:
-            ts = list(self.o.args[1:])
-            d0, d1 = ts[dim0], ts[dim1]  # we prefer concrete types from tensor definition
-            ts[dim0] = d1
-            ts[dim1] = d0
-            return TypedTensor(cast(_DType, self.o.tensor.transpose(dim0, dim1)), tuple([self.o.args[0]] + ts))
+    #     def __call__[*Init, D0, *Mid, D1, *Tail](
+    #         self, d0: Type[D0], d1: Type[D1], dim0: int, dim1: int
+    #     ) -> TypedTensor[_DType, *Init, D1, *Mid, D0, *Tail]:
+    #         ts = list(self.o.args[1:])
+    #         d0, d1 = ts[dim0], ts[dim1]  # we prefer concrete types from tensor definition
+    #         ts[dim0] = d1
+    #         ts[dim1] = d0
+    #         return TypedTensor(cast(_DType, self.o.tensor.transpose(dim0, dim1)), tuple([self.o.args[0]] + ts))
 
-    @property
-    def transpose(self) -> TypedTensor._Transpose[DType]:
-        return TypedTensor._Transpose[DType](self)
+    # @property
+    # def transpose(self) -> TypedTensor._Transpose[DType]:
+    #     return TypedTensor._Transpose[DType](self)
+    # def transpose[*Init, D0, *Mid, D1, *Tail](
+    #         self: TypedTensor[DType, *Init, D0, *Mid, D1, *Tail], d0: Type[D0], d1: Type[D1]
+    # ) -> TypedTensor[DType, *Init, D1, *Mid, D0, *Tail]:
+    #     dim0, dim1 = self.dim[d0], self.dim[d1]
+    #     ts = list(self.args[1:])
+    #     d0, d1 = ts[dim0], ts[dim1]  # we prefer concrete types from tensor definition
+    #     ts[dim0] = d1
+    #     ts[dim1] = d0
+    #     return TypedTensor(cast(DType, self.tensor.transpose(dim0, dim1)), tuple([self.args[0]] + ts))
 
     class _Permute[_DType: Tensor]:
         def __init__(self, o):

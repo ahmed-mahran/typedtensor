@@ -15,10 +15,6 @@ class Dimension(metaclass=DimensionMeta):
     length: int
 
 
-class Z[T: Dimension](Dimension):
-    pass
-
-
 def dimension(name: str, length: int) -> Type[Dimension]:
     return cast(Type[Dimension], DimensionMeta(name, (Dimension,), {}, length=length))
 

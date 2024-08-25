@@ -3,8 +3,8 @@ from typing import Literal, Type, cast, overload
 import torch
 from torch import BoolTensor, Tensor
 
-from ..dimension import Concat, Dimension, Rec, Z, Sub
-from ..shape_info import Broadcast, Shape, ShapeInfo
+from ..dimension import Concat, Dimension, Rec, Sub
+from ..shape_info import Broadcast, Shape, ShapeArgs, ShapeInfo
 from ..typed_tensor import TypedTensor
 
 
@@ -13,20 +13,20 @@ def addmm[DType: Tensor, *Ds, D0, D1, D2](
 ) -> TypedTensor[DType, *Ds, D0, D2]:
     ts1 = list(mat1.args)
     ts2 = list(mat2.args)
-    ts = ts1[:-3] + [ts1[-2], ts2[-1]]
+    ts = ts1[:-2] + [ts1[-2], ts2[-1]]
     res = cast(DType, torch.addmm(input, mat1.tensor, mat2.tensor))
     return TypedTensor(res, tuple(ts))
 
 
 class _cat:
     def __getitem__[D: Dimension](self, tp: Type[D]):
-        def inner[DType: Tensor](
-            xs: list[TypedTensor[DType, Z[Dimension], D, Z[Dimension]]],
-        ) -> TypedTensor[DType, Z[Dimension], Rec[D, Concat], Z[Dimension]]:
+        def inner[DType: Tensor, *Init, *Tail](
+            xs: list[TypedTensor[DType, *Init, D, *Tail]],
+        ) -> TypedTensor[DType, *Init, Rec[D, Concat], *Tail]:
             dim = xs[0].dim[tp]
             args = list(xs[0].args)
             args[dim + 1] = Rec[tp, Concat]
-            return TypedTensor[DType, Z[Dimension], Rec[D, Concat], Z[Dimension]](
+            return TypedTensor[DType, *Init, Rec[D, Concat], *Tail](
                 cast(DType, torch.cat([x.tensor for x in xs], dim=dim)), tuple(args)
             )
 
@@ -40,15 +40,19 @@ cat = _cat()
 
 
 class _stack:
+    # def __getitem__[D: Dimension, I: IntLiteral](self, tp: Type[D]):
+    #     def inner[DType: Tensor, *Ds](
+    #         xs: list[TypedTensor[DType, *Ds[:I], *Ds[I:]]],
+    #     ) -> TypedTensor[DType, Z[Dimension], D, Z[Dimension]]:
     def __getitem__[D: Dimension](self, tp: Type[D]):
         def inner[DType: Tensor, *Ds](
             xs: list[TypedTensor[DType, *Ds]],
             dim: int = 0,
-        ) -> TypedTensor[DType, Z[Dimension], D, Z[Dimension]]:
+        ) -> TypedTensor[DType, *tuple[Dimension, ...], D, *tuple[Dimension, ...]]:
             args = [i for i in xs[0].args]
             index = dim + 1
             args = args[:index] + [tp] + args[index:]
-            return TypedTensor[DType, Z[Dimension], D, Z[Dimension]](
+            return TypedTensor(
                 cast(DType, torch.stack([x.tensor for x in xs], dim=dim)), tuple(args)
             )
 
@@ -243,6 +247,28 @@ class _sum:
 sum[D](xs)
 """
 sum = _sum()
+
+
+class _transpose:
+    def __getitem__[D0: Dimension, D1: Dimension](self, shape: ShapeArgs[D0, D1]):
+        def inner[DType: Tensor, *Init, *Mid, *Tail](
+            x: TypedTensor[DType, *Init, D0, *Mid, D1, *Tail]
+        ) -> TypedTensor[DType, *Init, D1, *Mid, D0, *Tail]:
+            d0, d1 = Shape.types_from(shape)
+            dim0, dim1 = x.dim[d0], x.dim[d1]
+            ts = list(x.args[1:])
+            d0, d1 = ts[dim0], ts[dim1]  # we prefer concrete types from tensor definition
+            ts[dim0] = d1
+            ts[dim1] = d0
+            return TypedTensor(cast(DType, x.tensor.transpose(dim0, dim1)), tuple([x.args[0]] + ts))
+
+        return inner
+
+
+"""
+transpose[D0, D1](xs)
+"""
+transpose = _transpose()
 
 
 def where[DType: Tensor, *Cs, *Is, *Os](
