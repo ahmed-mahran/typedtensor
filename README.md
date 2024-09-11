@@ -1,4 +1,5 @@
 # Typed Tensor
+
 Yet another type annotations and runtime checking for tensor shape and datatype.
 
 This is a python exercise trying to write statically typed and maybe functional style code by a scala minded person.
@@ -10,6 +11,12 @@ This also can mostly serve pedagogical puposes teaching and learning neural netw
 ---
 **<p style="text-align: center;">\*\*\*\* NOTE \*\*\*\*</p>**
 This goes hand in hand with [MyPyright](https://github.com/ahmed-mahran/pyright) as it depends on features **NOT** yet supported by [python typing PEPs](https://peps.python.org/topic/typing/).
+
+---
+
+---
+**<p style="text-align: center;">\*\*\*\* NOTE \*\*\*\*</p>**
+This and [MyPyright](https://github.com/ahmed-mahran/pyright) are work under development.
 
 ---
 
@@ -58,7 +65,6 @@ a = TypedTensor[torch.FloatTensor, BatchDim, SequenceDim, FeatureDim](cast(torch
 b = TypedTensor[torch.FloatTensor, BatchDim, SequenceDim, FeatureDim](cast(torch.FloatTensor, torch.randn(128, 1024, 768)))
 
 
-# NOTE: type casting ops, with name as*, can be removed if new specs are imlemented in python and type checkers
 # TypedTensor[torch.FloatTensor, BatchDim, SequenceDim, SequenceDim]
 w = (
     a # TypedTensor[FloatTensor, BatchDim, SequenceDim, FeatureDim]
@@ -90,7 +96,7 @@ To remove it:
 pip uninstall typedtensor
 ```
 
-To view `examples`, you may clone this repo. Again, I recommend using `Pyright` as a type checker.
+To view `examples`, you may clone this repo. Again, You must use `MyPyright` as a type checker.
 
 ```commandline
 git clone git@github.com:ahmed-mahran/typedtensor.git
@@ -104,30 +110,18 @@ This has been quite a challenging endeavour for mainly two reasons:
 - Python is not built up to be a statically typed language.
 - Tensor operations have inherently complex patterns and relations that could hardly be captured by any ordinary type system.
 
-Static typing features were incrementally added to python through [a series of PEP's](https://peps.python.org/topic/typing/).
-In particular, [PEP 646](https://peps.python.org/pep-0646/) was a major milestone which has introduced variadic generics which allows
-the type of array-like structures to be parameterised with the array shape. On the other hand tensor operations
-have complex type patterns. Transpose and shape permute operations would require rearranging shape type parameters.
-Concatenation and stacking operations would require some sort of type parameters aggregations to type-hint affected
-dimensions. Not to mention convolution operations which would require some sort of type arithmetics to express
-output dimensions as a function of dimensions of input tensors and input parameters like stride, padding and dilation.
+Static typing features were incrementally added to python through [a series of PEP's](https://peps.python.org/topic/typing/). In particular, [PEP 646](https://peps.python.org/pep-0646/) was a major milestone which has introduced variadic generics which allows the type of array-like structures to be parameterised with the array shape. On the other hand tensor operations have complex type patterns. Transpose and shape permute operations would require rearranging shape type parameters. Concatenation and stacking operations would require some sort of type parameters aggregations to type-hint affected dimensions. Not to mention convolution operations which would require some sort of type arithmetics to express output dimensions as a function of dimensions of input tensors and input parameters like stride, padding and dilation.
 
-Python current typing specifications are not sufficient to seamlessly express all tensor operations. Moreover,
-it is rather slow to implement new specifications; it could take years to discuss and implement a single PEP
-and to see that PEP effective in all type checkers. On the other hand tensor ops libraries are being developed
-in fast pace and are being adopted further by a fast paced well adpoted libraries, e.g. pytorch -> transformers.
-All those libraries are written in a pythonic way which would require re-writing and re-structuring to adhere
-to static type safety.
+Python current typing specifications are not sufficient to seamlessly express all tensor operations. Moreover, it is rather slow to implement new specifications; it could take years to discuss and implement a single PEP and to see that PEP effective in all type checkers. On the other hand tensor ops libraries are being developed in fast pace and are being adopted further by a fast paced well adpoted libraries, e.g. pytorch -> transformers. All those libraries are written in a pythonic way which would require re-writing and re-structuring to adhere to static type safety.
 
 # Details
 
 ## Basic types
 ### Dimension
-A tensor shape is described by a sequence of dimension types.
-`Dimension` is the base class for all dimension types.
-For each dimension type, there should be a class extending directly or indirectly from `Dimension`.
-Dimension size can be captured by setting class variable `length`.
+A tensor shape is described by a sequence of dimension types. `Dimension` is the base class for all dimension types. For each dimension type, there should be a class extending directly or indirectly from `Dimension`. Dimension size can be captured by setting class variable `length`.
+
 For example:
+
 ```python
 # Abstract Batch dimension with no length
 class BatchDim(Dimension): pass
@@ -138,14 +132,13 @@ class _SequenceDim(Dimension): pass
 class CurrentSequenceDim(_SequenceDim): pass
 class PastAndCurrentSequenceDim(_SequenceDim): pass
 ```
-`typedtensor` discourages usage of literals as types, strings or numbers, to describe shape.
-User defined types (UDT's) are more strict, type-safe and IDE friendly. UDT's can capture structural
-semantic relations through type hierarchy. The ability to organize types in a hierarchy is essential
-to determine types equivalence relations which is essential to typing tensor operations demanding less
-complex features from the type system.
+
+`typedtensor` discourages usage of literals as types, strings or numbers, to describe shape. User defined types (UDT's) are more strict, type-safe and IDE friendly. UDT's can capture structural semantic relations through type hierarchy. The ability to organize types in a hierarchy is essential to determine types equivalence relations which is essential to typing tensor operations demanding less complex features from the type system.
 
 ### TypedTensor [`DType`, `*Ds`]
+
 `TypedTensor` is the typed wrapper for any `torch.Tensor`. It is parameterized by:
+
 - `DType`: which specifies the wrapped tensor type, e.g. `torch.Tensor` or `torch.FloatTensor`
 - `*Ds`: which is a variadic type variable of dimension types describing the order and types of tensor shape
 
@@ -154,47 +147,29 @@ For example:
 ```python
 TypedTensor[torch.FloatTensor, BatchDim, CurrentSequenceDim, FeatureDim]
 TypedTensor[torch.LongTensor, BatchDim, CurrentSequenceDim]
-``` 
+```
 
-Ideally shape dimensions should be unique, otherwise this can cause ambiguity matching shapes and accessing/referencing/manipulating dimensions.
-Currently, `typedtensor` doesn't impose a uniqueness constrain on types of shape dimensions however this may be
-added in future.
-
-
+Ideally shape dimensions should be unique, otherwise this can cause ambiguity matching shapes and accessing/referencing/manipulating dimensions. Currently, `typedtensor` doesn't impose a uniqueness constrain on types of shape dimensions however this may be added in future.
 
 ### Shape [`*Ds`]
-Holds specific dimension types. Useful to pass specific dimension types around as type arguments. Can be used to get
-around limitations of variadic type variables. E.g. functions parameterized by variadic type variables would
-capture the type of individual type parameters. For example, calling `fn[*Ds](*types: *Ds) -> TypedTensor[Tensor, *Ds]: ...`
-as `fn(Batch, Seq)` would return `TypedTensor[Tensor, Type[Batch], Type[Seq]]` however we would expect to be
-able to return `TypedTensor[Tensor, Batch, Seq]` instead. `typedtensor` uses `Shape` to get around this limitation.
-In our example, `fn` would be defined as `fn[*Ds](types: ShapeArgs[*Ds]) -> TypedTensor[Tensor, *Ds]: ...` and
-called as `fn(Shape[Batch, Seq])` to retrun `TypedTensor[Tensor, Batch, Seq]`.
 
-Also, `Shape` is treated as a special dimension that is equivalent to unpacked tuple `*Tuple[*Ds]`. Moreover,
-it can be nested in shape definition, e.g. `TypedTensor[Tensor, Batch, Seq, Head, Feature]`,
-`TypedTensor[Tensor, Shape[Batch, Seq, Head, Feature]]`, `TypedTensor[Tensor, Shape[Shape[Batch, Seq], Shape[Head], Feature]]`
- ... are all equivalent.
+Holds specific dimension types. Useful to pass specific dimension types around as type arguments. Can be used to get around limitations of variadic type variables. E.g. functions parameterized by variadic type variables would capture the type of individual type parameters. For example, calling `fn[*Ds](*types: *Ds) -> TypedTensor[Tensor, *Ds]: ...` as `fn(Batch, Seq)` would return `TypedTensor[Tensor, Type[Batch], Type[Seq]]` however we would expect to be able to return `TypedTensor[Tensor, Batch, Seq]` instead. `typedtensor` uses `Shape` to get around this limitation.
+
+In our example, `fn` would be defined as `fn[*Ds](types: ShapeArgs[*Ds]) -> TypedTensor[Tensor, *Ds]: ...` and called as `fn(Shape[Batch, Seq])` to retrun `TypedTensor[Tensor, Batch, Seq]`.
+
+Also, `Shape` is treated as a special dimension that is equivalent to unpacked tuple `*Tuple[*Ds]`. Moreover, it can be nested in shape definition, e.g. `TypedTensor[Tensor, Batch, Seq, Head, Feature]`, `TypedTensor[Tensor, Shape[Batch, Seq, Head, Feature]]`, `TypedTensor[Tensor, Shape[Shape[Batch, Seq], Shape[Head], Feature]]` ... are all equivalent.
 
 ## Broadcasting
 
 ### Semantics
 
-Broadcast semantics (see [pytorch-broadcasting](https://pytorch.org/docs/stable/notes/broadcasting.html))
-on type level are defined differently. Shapes are aligned from right to left. Dimension types from the 
-higher dimensional shape on the left that don't align with any dimension type from the lower dimensional
-shape are retruned as-is. For each pair of the aligned dimension types, the type with longer length is 
-returned given that the other has length 1, or otherwise the type which is super to the other type is 
-returned, or otherwise broadcasting fails.
+Broadcast semantics (see [pytorch-broadcasting](https://pytorch.org/docs/stable/notes/broadcasting.html)) on type level are defined differently. Shapes are aligned from right to left. Dimension types from the higher dimensional shape on the left that don't align with any dimension type from the lower dimensional shape are retruned as-is. For each pair of the aligned dimension types, the type with longer length is returned given that the other has length 1, or otherwise the type which is super to the other type is returned, or otherwise broadcasting fails.
 
-Currently broadcasting doesn't handle repeated dimensions. This is because repeated dimensions
-shouldn't be used at runtime. However, if this logic to be run at static type checking time,
-repeated dimensions must be handled somehow.
+Currently broadcasting doesn't handle repeated dimensions. This is because repeated dimensions shouldn't be used at runtime. However, if this logic to be run at static type checking time, repeated dimensions must be handled somehow.
 
 ### Broadcast [`Shape`, `Shape`]
 
-This is the type of a broadcasted shape, which is by itself a special dimension like `Shape`.
-Hence, it can be recursively nested to express broadcasted multiple shapes.
+This is the type of a broadcasted shape, which is by itself a special dimension like `Shape`. Hence, it can be recursively nested to express broadcasted multiple shapes.
 
 ```python
 def where[DType: Tensor, *Cs, *Is, *Os](
@@ -205,17 +180,11 @@ def where[DType: Tensor, *Cs, *Is, *Os](
     ...
 ```
 
-`Broadcast` is a binary operation on shapes: `Shape x Shape -> Shape`. The static type system needs to evaluate
-that operation to decide on type equivalence and to infer shape types.
+`Broadcast` is a binary operation on shapes: `Shape x Shape -> Shape`. The static type system needs to evaluate that operation to decide on type equivalence and to infer shape types.
 
 ### Sub [`D`]
 
-`Sub` convinces the type system that `Sub[D]` is a sub-type of `D`. This is for convinience to avoid defining
-redundant sub-types. Sometimes it will be cumbersome or not straightforward to define the dimension type of a
-broadcastable tensor. For example, when applying a mask on a tensor `x` using  `where(mask_bool, x, mask_value)`, if
-`mask_value` has dimensions different than `x` either in length per dimension or number of dimensions and we
-don't bother about dimension types of `mask_value`, shape of `mask_value` can be defined with sub-types of
-dimensions of `x`. `Sub[D]` can be used here to define shape of `mask_value` and hence broadcasting can return `D`.
+`Sub` convinces the type system that `Sub[D]` is a sub-type of `D`. This is for convinience to avoid defining redundant sub-types. Sometimes it will be cumbersome or not straightforward to define the dimension type of a broadcastable tensor. For example, when applying a mask on a tensor `x` using  `where(mask_bool, x, mask_value)`, if `mask_value` has dimensions different than `x` either in length per dimension or number of dimensions and we don't bother about dimension types of `mask_value`, shape of `mask_value` can be defined with sub-types of dimensions of `x`. `Sub[D]` can be used here to define shape of `mask_value` and hence broadcasting can return `D`.
 
 ```python
 x: TypedTensor[Tensor, Batch, Head, Seq1, Seq2] = ...
@@ -232,29 +201,31 @@ masked_x.asinstanceof[TypedTensor[Tensor, Batch, Head, Seq1, Seq2]] # ACCEPTABLE
 -->
 
 # New typing requirements
+
+In this section, we highlight typing features that are missing in python however are required for tensors type system.
+
 ## Multiple Variadic Generics
-Multiple zero or more dimensions! PEP 646 [doesn't allow multilpe variadic type variables](https://peps.python.org/pep-0646/#multiple-type-variable-tuples-not-allowed)
-nor it allows [multiple unpackings](https://peps.python.org/pep-0646/#multiple-unpackings-in-a-tuple-not-allowed).
-However, arbitrarly dimension picking operations, like transpose or concatenate, need to describe shape patterns
-with more than one wildcard. For example, consider the transpose operation:
+
+Multiple zero or more dimensions! PEP 646 [doesn't allow multilpe variadic type variables](https://peps.python.org/pep-0646/#multiple-type-variable-tuples-not-allowed) nor it allows [multiple unpackings](https://peps.python.org/pep-0646/#multiple-unpackings-in-a-tuple-not-allowed). However, arbitrarly dimension picking operations, like transpose or concatenate, need to describe shape patterns with more than one wildcard. For example, consider the transpose operation:
+
 ```python
 def transpose[*PreDs, *MidDs, *PostDs, D0, D1](
     self: TypedTensor[DType, *PreDs, D0, *MidDs, D1, *PostDs],
 ) -> TypedTensor[DType, *PreDs, D1, *MidDs, D0, *PostDs]:
     ...
 ```
-Transpose swaps any two dimensions `D0` and `D1`. The input tensor should be of the form `TypedTensor[DType, *PreDs, D0, *MidDs, D1, *PostDs]`
-while the output tensor should be of the same form but with `D0` and `D1` swapped `TypedTensor[DType, *PreDs, D1, *MidDs, D0, *PostDs]`.
-It is currently not possibel to write such type patterns in python. `typedtensor` tried to implement a new generic type, `Z[D]`, which corresponds to zero or more dimensions to fulfill this need
+
+Transpose swaps any two dimensions `D0` and `D1`. The input tensor should be of the form `TypedTensor[DType, *PreDs, D0, *MidDs, D1, *PostDs]` while the output tensor should be of the same form but with `D0` and `D1` swapped `TypedTensor[DType, *PreDs, D1, *MidDs, D0, *PostDs]`. It is currently not possibel to write such type patterns in python. `typedtensor` tried to implement a new generic type, `Z[D]`, which corresponds to zero or more dimensions to fulfill this need
+
 ```python
 def transpose[D0, D1](
     self: TypedTensor[DType, Z[Dimension], D0, Z[Dimension], D1, Z[Dimension]],
 ) -> TypedTensor[DType, Z[Dimension], D1, Z[Dimension], D0, Z[Dimension]]:
     ...
 ```
-This comes with an extra cost and redundancy as we need explicit type casting to convince the type checker that
-a typed tensor is of a certain shape pattern. E.g. in order to use transposed tensor, it should first be cast to
-the suitable shape pattern.
+
+This comes with an extra cost and redundancy as we need explicit type casting to convince the type checker that a typed tensor is of a certain shape pattern. E.g. in order to use transposed tensor, it should first be cast to the suitable shape pattern.
+
 ```python
 a: TypedTensor[FloatTensor, BatchDim, SequenceDim, FeatureDim] = ...
 
@@ -263,4 +234,27 @@ a_t: TypedTensor[torch.FloatTensor, BatchDim, FeatureDim, SequenceDim] = (
     .transpose[SequenceDim, FeatureDim] # TypedTensor[FloatTensor, Z[Dimension], FeatureDim, Z[Dimension], SequenceDim]
     .asinstanceof[TypedTensor[FloatTensor, BatchDim, FeatureDim, SequenceDim]]
 )
+```
+
+## Type Transformations of Variadic Generics
+
+Passing dimensions classes as arguments through variadic type variables as parameters would capture the type of the dimension class and not the class itself, e.g. `Type[Batch]` instead of `Batch`. This makes it impossible to describe some tensor operations as they would produce tensors like `TypedTensor[Tensor, Type[Batch], Type[Features]]` instead of `TypedTensor[Tensor, Batch, Features]`.
+
+```python
+fn[*Ds](*types: *Ds) -> TypedTensor[Tensor, *Ds]: ...
+reveal_type(fn(Batch, Feature)) # TypedTensor[Tensor, Type[Batch], Type[Features]]
+```
+
+`typedtensor` tried a workaround by defining a new shape container, `Shape[*Ds]` and type alias `ShapeArgs[*Ds] = Type[Shape[*Ds]]`.
+
+```python
+fn[*Ds](types: Type[Shape[*Ds]]) -> TypedTensor[Tensor, *Ds]: ...
+reveal_type(fn(Shape(Batch, Feature))) # TypedTensor[Tensor, Batch, Features]
+```
+
+It will be more convenient if python allows type transformations on variadic generics.
+
+```python
+fn[*Ds](types: *Map[Type, *Ds]) -> TypedTensor[Tensor, *Ds]: ...
+reveal_type(fn(Batch, Feature)) # TypedTensor[Tensor, Batch, Features]
 ```
