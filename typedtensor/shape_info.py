@@ -489,7 +489,7 @@ class ShapeInfo:
         def __init__(self, o):
             self.o = o
 
-        def __getitem__[T](self, tp: Type[T] | TypeVar):
+        def __getitem__[T](self, tp: Type[T]):
             arg = _unpack_recognize_arg(tp)[0]
             for i, item in enumerate(self.o.args):
                 if item.is_subclass(arg):

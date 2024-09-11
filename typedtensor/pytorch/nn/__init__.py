@@ -5,7 +5,6 @@ from torch import Size, Tensor, nn
 
 from ... import pytorch as ttorch
 from ...dimension import Dimension
-from ...shape_info import Shape
 from ...typed_tensor import TypedTensor
 from ...utils import CapturedTypeArgs
 
@@ -42,12 +41,15 @@ class Conv1D[DType: Tensor, D0, D1](nn.Module):
         self.weight_t = TypedTensor[DType, D0, D1](cast(DType, self.weight))
 
     def forward[*Ds](self, x: TypedTensor[DType, *Ds, D0]) -> TypedTensor[DType, *Ds, D1]:
-        dtype, d0, d1 = self.__orig_class__.__args__
+        # dtype, d0, d1 = self.__orig_class__.__args__
         size_out = x.size()[:-1] + (self.output_length,)
-        shape_out = x.args[1:-1] + (d1,)
-        x_as_2d = x.view[Shape[Dimension, D0]](Size((-1, x.size(-1))))
+        # shape_out = x.args[1:-1] + (d1,)
+        x_as_2d = x.view[Dimension, D0](Size((-1, x.size(-1))))
         x_out_as_2d = ttorch.addmm(self.bias, x_as_2d, self.weight_t)
-        return x_out_as_2d.view(Shape[*Ds, D1], Size(size_out), shape_out)
+        x_out = x_out_as_2d.view[*Ds, D1](Size(size_out))
+        return x_out
+        # return x_out_as_2d.view[*Ds, D1](Size(size_out))
+        # return x_out_as_2d.view(Shape[*Ds, D1], Size(size_out), shape_out)
 
 
 class LayerNorm[DType: Tensor, D0](nn.Module):

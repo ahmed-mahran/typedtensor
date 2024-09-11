@@ -33,7 +33,7 @@ from transformers import (
     GPT2Config,
     PreTrainedModel,
 )
-from typedtensor import Dimension, Shape, Sub, TypedTensor
+from typedtensor import Dimension, Sub, TypedTensor
 from typedtensor import pytorch as ttorch
 from typedtensor.pytorch import nn as tnn
 
@@ -330,7 +330,7 @@ class GPT2Attention[DType: Tensor](nn.Module):
         # capturing runtime type
         _PastAndCurrentSequenceDim = key.args[1:][key.dim[PastAndCurrentSequenceDim]]
 
-        attn_weights = query.matmul(ttorch.transpose[Shape[PastAndCurrentSequenceDim, HeadFeatureDim]](key))
+        attn_weights = query.matmul(ttorch.transpose[PastAndCurrentSequenceDim, HeadFeatureDim](key))
 
         if self.scale_attn_weights:
             # value.size(-1) = head_features
@@ -377,7 +377,7 @@ class GPT2Attention[DType: Tensor](nn.Module):
                 cast(DType, torch.full([1], mask_value, dtype=attn_weights.dtype, device=attn_weights.device))
             )
             attn_weights = ttorch.where(causal_mask, attn_weights, mask_value).shaped[
-                Shape[BatchDim, HeadDim, SequenceDim, PastAndCurrentSequenceDim]
+                BatchDim, HeadDim, SequenceDim, PastAndCurrentSequenceDim
             ]
 
         if attention_mask is not None:
@@ -465,8 +465,8 @@ class GPT2Attention[DType: Tensor](nn.Module):
         Splits hidden_size dim into attn_head_size and num_heads
         """
         new_shape = tensor.size()[:-1] + (num_heads, attn_head_size)
-        x = tensor.view[Shape[BatchDim, SequenceDim, HeadDim, HeadFeatureDim]](Size(new_shape))
-        return x.permute[Shape[BatchDim, HeadDim, SequenceDim, HeadFeatureDim]]
+        x = tensor.view[BatchDim, SequenceDim, HeadDim, HeadFeatureDim](Size(new_shape))
+        return x.permute[BatchDim, HeadDim, SequenceDim, HeadFeatureDim]
 
     def _merge_heads(
         self, tensor: HeadsHiddenStatesTypedTensor[DType, SequenceDim], num_heads: int, attn_head_size: int
@@ -474,9 +474,9 @@ class GPT2Attention[DType: Tensor](nn.Module):
         """
         Merges attn_head_size dim and num_attn_heads dim into hidden_size
         """
-        x = tensor.permute[Shape[BatchDim, SequenceDim, HeadDim, HeadFeatureDim]].contiguous()
+        x = tensor.permute[BatchDim, SequenceDim, HeadDim, HeadFeatureDim].contiguous()
         new_shape = x.size()[:-2] + (num_heads * attn_head_size,)
-        return x.view[Shape[BatchDim, SequenceDim, FeatureDim]](Size(new_shape))
+        return x.view[BatchDim, SequenceDim, FeatureDim](Size(new_shape))
 
     def forward(
         self,
@@ -508,13 +508,13 @@ class GPT2Attention[DType: Tensor](nn.Module):
         if layer_past is not None:
             past_and_current_key = ttorch.cat[_SequenceDim](
                 [layer_past.key, key]
-            ).shaped[Shape[BatchDim, HeadDim, PastSequenceDim, HeadFeatureDim]]
+            ).shaped[BatchDim, HeadDim, PastSequenceDim, HeadFeatureDim]
             past_and_current_value = ttorch.cat[_SequenceDim](
                 [layer_past.value, value]
-            ).shaped[Shape[BatchDim, HeadDim, PastSequenceDim, HeadFeatureDim]]
+            ).shaped[BatchDim, HeadDim, PastSequenceDim, HeadFeatureDim]
         else:
-            past_and_current_key = key.shaped[Shape[BatchDim, HeadDim, PastSequenceDim, HeadFeatureDim]]
-            past_and_current_value = value.shaped[Shape[BatchDim, HeadDim, PastSequenceDim, HeadFeatureDim]]
+            past_and_current_key = key.shaped[BatchDim, HeadDim, PastSequenceDim, HeadFeatureDim]
+            past_and_current_value = value.shaped[BatchDim, HeadDim, PastSequenceDim, HeadFeatureDim]
 
         # if self.reorder_and_upcast_attn:
         #     attn_output, attn_weights = self._upcast_and_reordered_attn(query, past_and_current_key, past_and_current_value, attention_mask, head_mask)
@@ -524,9 +524,7 @@ class GPT2Attention[DType: Tensor](nn.Module):
         )
 
         attn_output = self._merge_heads(attn_output, self.num_heads, self.head_dim)
-        attn_output = self.c_proj.forward(attn_output).shaped[
-            Shape[BatchDim, SequenceDim, FeatureDim]
-        ]
+        attn_output = self.c_proj.forward(attn_output)
 
         return GPT2AttentionOutput(
             attn_output,
@@ -607,7 +605,7 @@ class GPT2Block[DType: Tensor](nn.Module):
         hidden_states_1, attn_outputs = attention(hidden_states)
 
         # Cross-Attention
-        cross_attn_outputs: Optional[GPT2AttentionOutput] = None
+        cross_attn_outputs: Optional[GPT2AttentionOutput[DType]] = None
         if encoder_hidden_states is not None:
             # add one self-attention block for cross-attention
             if not hasattr(self, "crossattention"):
@@ -619,7 +617,7 @@ class GPT2Block[DType: Tensor](nn.Module):
             @tnn.residual_connection
             def crossattention(hidden_states: HiddenStatesTypedTensor[DType]):
                 cross_attn_outputs = self.crossattention.forward(
-                    self.ln_cross_attn(hidden_states),
+                    self.ln_cross_attn.forward(hidden_states),
                     attention_mask=attention_mask,
                     head_mask=head_mask,
                     encoder_hidden_states=encoder_hidden_states,
@@ -635,10 +633,8 @@ class GPT2Block[DType: Tensor](nn.Module):
         # Feed Forward
         @tnn.residual_connection
         def feedforward(hidden_states: HiddenStatesTypedTensor[DType]):
-            feed_forward_hidden_states = self.mlp.forward(self.ln_2(hidden_states))
-            return feed_forward_hidden_states.shaped[
-                Shape[BatchDim, SequenceDim, FeatureDim]
-            ], feed_forward_hidden_states
+            feed_forward_hidden_states = self.mlp.forward(self.ln_2.forward(hidden_states))
+            return feed_forward_hidden_states, feed_forward_hidden_states
 
         hidden_states_3, _ = feedforward(hidden_states_2)
 
@@ -796,14 +792,10 @@ class GPT2Model[DType: Tensor](GPT2PreTrainedModel[DType]):
 
         if inputs_embeds is None:
             if input_ids is not None:
-                inputs_embeds = self.wte.forward(input_ids).shaped[
-                    Shape[BatchDim, SequenceDim, FeatureDim]
-                ]
+                inputs_embeds = self.wte.forward(input_ids)
             else:
                 raise ValueError()
-        position_embeds = self.wpe.forward(position_ids).shaped[
-            Shape[BatchDim, SequenceDim, FeatureDim]
-        ]
+        position_embeds = self.wpe.forward(position_ids)
         hidden_states = inputs_embeds + cast(DType, position_embeds.tensor)
 
         # Attention mask.
@@ -843,9 +835,7 @@ class GPT2Model[DType: Tensor](GPT2PreTrainedModel[DType]):
         _head_mask = self.get_head_mask(head_mask, self.config.n_layer)
 
         if token_type_ids is not None:
-            token_type_embeds = self.wte.forward(token_type_ids).shaped[
-                Shape[BatchDim, SequenceDim, FeatureDim]
-            ]
+            token_type_embeds = self.wte.forward(token_type_ids)
             hidden_states = hidden_states + token_type_embeds.tensor
 
         # output_shape = (-1,) + input_shape[1:] + (hidden_states.size(-1),)

@@ -4,7 +4,7 @@ description = "Yet another type annotations and runtime checking for tensor shap
 version = "0.0.0"
 readme = "README.md"
 authors = [{name = "Ahmed Mahran", email = "ahmed.mahran@mashin.io"}]
-urls = {repository = "https://github.com/ahmed-mahran/typed-tensor" }
+urls = {repository = "https://github.com/ahmed-mahran/typedtensor" }
 license = {file = "LICENSE"}
 requires-python = ">=3.12"
 dependencies = [

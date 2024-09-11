@@ -1,10 +1,11 @@
 from typing import Literal, Type, cast, overload
 
+from mypyright_extensions import Map
 import torch
 from torch import BoolTensor, Tensor
 
 from ..dimension import Concat, Dimension, Rec, Sub
-from ..shape_info import Broadcast, Shape, ShapeArgs, ShapeInfo
+from ..shape_info import Broadcast, Shape, ShapeInfo
 from ..typed_tensor import TypedTensor
 
 
@@ -250,11 +251,11 @@ sum = _sum()
 
 
 class _transpose:
-    def __getitem__[D0: Dimension, D1: Dimension](self, shape: ShapeArgs[D0, D1]):
+    def __getitem__[D0: Dimension, D1: Dimension](self, shape: Map[Type, D0, D1]):
         def inner[DType: Tensor, *Init, *Mid, *Tail](
             x: TypedTensor[DType, *Init, D0, *Mid, D1, *Tail]
         ) -> TypedTensor[DType, *Init, D1, *Mid, D0, *Tail]:
-            d0, d1 = Shape.types_from(shape)
+            d0, d1 = shape
             dim0, dim1 = x.dim[d0], x.dim[d1]
             ts = list(x.args[1:])
             d0, d1 = ts[dim0], ts[dim1]  # we prefer concrete types from tensor definition
@@ -273,11 +274,9 @@ transpose = _transpose()
 
 def where[DType: Tensor, *Cs, *Is, *Os](
     condition: TypedTensor[BoolTensor, *Cs], input: TypedTensor[DType, *Is], other: TypedTensor[DType, *Os]
-):
+) -> TypedTensor[DType, Broadcast[Shape[Broadcast[Shape[*Cs], Shape[*Is]]], Shape[*Os]]]:
     res = torch.where(condition.tensor, input.tensor, other.tensor)
     broadcast_shape = ShapeInfo(
         Broadcast.broadcast(Broadcast.broadcast(condition.shape.args, input.shape.args), other.shape.args)
     )
-    return TypedTensor[DType, Broadcast[Shape[Broadcast[Shape[*Cs], Shape[*Is]]], Shape[*Os]]](
-        cast(DType, res), (input.args[0],) + tuple(broadcast_shape.types())
-    )
+    return TypedTensor(cast(DType, res), (input.args[0],) + tuple(broadcast_shape.types()))
