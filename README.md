@@ -202,9 +202,11 @@ masked_x.asinstanceof[TypedTensor[Tensor, Batch, Head, Seq1, Seq2]] # ACCEPTABLE
 
 # New typing requirements
 
-In this section, we highlight typing features that are missing in python however are required for tensors type system.
+In this section, we highlight typing features that are missing in python however are required for tensors type system. This section will be expanded when new features are added. Also, these features are/will be supported by [MyPyright](https://github.com/ahmed-mahran/pyright).
 
 ## Multiple Variadic Generics
+![MyPyright Support](https://img.shields.io/badge/MyPyright-Yes-green)
+
 
 Multiple zero or more dimensions! PEP 646 [doesn't allow multilpe variadic type variables](https://peps.python.org/pep-0646/#multiple-type-variable-tuples-not-allowed) nor it allows [multiple unpackings](https://peps.python.org/pep-0646/#multiple-unpackings-in-a-tuple-not-allowed). However, arbitrarly dimension picking operations, like transpose or concatenate, need to describe shape patterns with more than one wildcard. For example, consider the transpose operation:
 
@@ -237,6 +239,8 @@ a_t: TypedTensor[torch.FloatTensor, BatchDim, FeatureDim, SequenceDim] = (
 ```
 
 ## Type Transformations of Variadic Generics
+
+![MyPyright Support](https://img.shields.io/badge/MyPyright-Yes-green)
 
 Passing dimensions classes as arguments through variadic type variables as parameters would capture the type of the dimension class and not the class itself, e.g. `Type[Batch]` instead of `Batch`. This makes it impossible to describe some tensor operations as they would produce tensors like `TypedTensor[Tensor, Type[Batch], Type[Features]]` instead of `TypedTensor[Tensor, Batch, Features]`.
 
