@@ -4,9 +4,9 @@ Yet another type annotations and runtime checking for tensor shape and datatype.
 
 This is a python exercise trying to write statically typed and maybe functional style code by a scala minded person.
 
-This is an opportunity to challenge python's static typing capabilities to express common patterns in neural networks. 
+This is an opportunity to challenge python's static typing capabilities to express common patterns in neural networks. New python typing features shall be eagerly implemented by [MyPyright](https://github.com/ahmed-mahran/pyright).
 
-This also can mostly serve pedagogical puposes teaching and learning neural networks.
+Until all checks are static and have zero runtime overhead with advancement of [MyPyright](https://github.com/ahmed-mahran/pyright) or python, this can mostly serve pedagogical puposes teaching and learning neural networks.
 
 ---
 **<p style="text-align: center;">\*\*\*\* NOTE \*\*\*\*</p>**
