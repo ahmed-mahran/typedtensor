@@ -328,9 +328,9 @@ class GPT2Attention[DType: Tensor](nn.Module):
         HeadsAttentionTypedTensor[DType, SequenceDim, PastAndCurrentSequenceDim],
     ]:
         # capturing runtime type
-        _PastAndCurrentSequenceDim = key.args[1:][key.dim[PastAndCurrentSequenceDim]]
+        _PastAndCurrentSequenceDim = key.args[1:][key.dim[PastAndCurrentSequenceDim]()]
 
-        attn_weights = query.matmul(ttorch.transpose[PastAndCurrentSequenceDim, HeadFeatureDim](key))
+        attn_weights = query.matmul(key.transpose[PastAndCurrentSequenceDim, HeadFeatureDim]())
 
         if self.scale_attn_weights:
             # value.size(-1) = head_features
@@ -378,7 +378,7 @@ class GPT2Attention[DType: Tensor](nn.Module):
             )
             attn_weights = ttorch.where(causal_mask, attn_weights, mask_value).shaped[
                 BatchDim, HeadDim, SequenceDim, PastAndCurrentSequenceDim
-            ]
+            ]()
 
         if attention_mask is not None:
             # Apply the attention mask
@@ -466,7 +466,7 @@ class GPT2Attention[DType: Tensor](nn.Module):
         """
         new_shape = tensor.size()[:-1] + (num_heads, attn_head_size)
         x = tensor.view[BatchDim, SequenceDim, HeadDim, HeadFeatureDim](Size(new_shape))
-        return x.permute[BatchDim, HeadDim, SequenceDim, HeadFeatureDim]
+        return x.permute[BatchDim, HeadDim, SequenceDim, HeadFeatureDim]()
 
     def _merge_heads(
         self, tensor: HeadsHiddenStatesTypedTensor[DType, SequenceDim], num_heads: int, attn_head_size: int
@@ -474,7 +474,7 @@ class GPT2Attention[DType: Tensor](nn.Module):
         """
         Merges attn_head_size dim and num_attn_heads dim into hidden_size
         """
-        x = tensor.permute[BatchDim, SequenceDim, HeadDim, HeadFeatureDim].contiguous()
+        x = tensor.permute[BatchDim, SequenceDim, HeadDim, HeadFeatureDim]().contiguous()
         new_shape = x.size()[:-2] + (num_heads * attn_head_size,)
         return x.view[BatchDim, SequenceDim, FeatureDim](Size(new_shape))
 
@@ -508,13 +508,13 @@ class GPT2Attention[DType: Tensor](nn.Module):
         if layer_past is not None:
             past_and_current_key = ttorch.cat[_SequenceDim](
                 [layer_past.key, key]
-            ).shaped[BatchDim, HeadDim, PastSequenceDim, HeadFeatureDim]
+            ).shaped[BatchDim, HeadDim, PastSequenceDim, HeadFeatureDim]()
             past_and_current_value = ttorch.cat[_SequenceDim](
                 [layer_past.value, value]
-            ).shaped[BatchDim, HeadDim, PastSequenceDim, HeadFeatureDim]
+            ).shaped[BatchDim, HeadDim, PastSequenceDim, HeadFeatureDim]()
         else:
-            past_and_current_key = key.shaped[BatchDim, HeadDim, PastSequenceDim, HeadFeatureDim]
-            past_and_current_value = value.shaped[BatchDim, HeadDim, PastSequenceDim, HeadFeatureDim]
+            past_and_current_key = key.shaped[BatchDim, HeadDim, PastSequenceDim, HeadFeatureDim]()
+            past_and_current_value = value.shaped[BatchDim, HeadDim, PastSequenceDim, HeadFeatureDim]()
 
         # if self.reorder_and_upcast_attn:
         #     attn_output, attn_weights = self._upcast_and_reordered_attn(query, past_and_current_key, past_and_current_value, attention_mask, head_mask)

@@ -6,8 +6,9 @@ import types
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from inspect import isclass
-from typing import Any, List, Optional, Tuple, Type, TypeGuard, TypeVar, TypeVarTuple, overload
+from typing import Any, List, Optional, Tuple, Type, TypeGuard, TypeVarTuple, overload
 
+from mypyright_extensions import subscriptablemethod
 from torch import Size, Tensor
 
 from .dimension import Concat, Dimension, Rec, Sub
@@ -485,20 +486,13 @@ class ShapeInfo:
     def types(self):
         return [a.origin for a in self.args]
 
-    class _Dim:
-        def __init__(self, o):
-            self.o = o
-
-        def __getitem__[T](self, tp: Type[T]):
-            arg = _unpack_recognize_arg(tp)[0]
-            for i, item in enumerate(self.o.args):
-                if item.is_subclass(arg):
-                    return i
-            raise ValueError(f"Dimension {tp} doesn't exist in shape {self.o}")
-
-    @property
-    def dim(self):
-        return ShapeInfo._Dim(self)
+    @subscriptablemethod
+    def dim[T](self, tp: Type[T]):
+        arg = _unpack_recognize_arg(tp)[0]
+        for i, item in enumerate(self.args):
+            if item.is_subclass(arg):
+                return i
+        raise ValueError(f"Dimension {tp} doesn't exist in shape {self}")
 
     def size(self) -> Size:
         return Size([a.value if isinstance(a, ExactDimensionLength) else -1 for a in self.args])

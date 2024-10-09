@@ -6,7 +6,7 @@ from functools import wraps
 from inspect import isclass
 from types import FunctionType
 from typing import Any, Callable, Concatenate, Optional, Tuple, Type, TypeGuard, cast, overload, override
-from mypyright_extensions import Map
+from mypyright_extensions import Map, subscriptablemethod
 import torch
 from torch import Size, Tensor
 
@@ -57,6 +57,7 @@ class TypedTensorMeta(ABCMeta):
         return super().__new__(cls, name, bases, new_namespace)
 
 
+# TODO: *Dimensions needs to be covariant, need to implement auto-variance for typevartuple
 class TypedTensor[DType: Tensor, *Dimensions](CaptureTypeArgs, metaclass=TypedTensorMeta):
     # When TypedTensor class is subscripted, a new _GenericAlias
     # is created which holds three special attributes for internal bookkeeping of generic types:
@@ -144,51 +145,34 @@ class TypedTensor[DType: Tensor, *Dimensions](CaptureTypeArgs, metaclass=TypedTe
     def shape(self) -> ShapeInfo:
         return self.typed_args[1]
 
-    @property
-    def dim(self):
-        return ShapeInfo._Dim(self.shape)
+    @subscriptablemethod
+    def dim[T](self, tp: Type[T]):
+        return self.shape.dim[tp]()
 
     @staticmethod
     def as_instance_of[T](t: TypedTensor[DType, *Dimensions], tp: Type[T]) -> T:
-        return t.asinstanceof[tp]
+        return t.asinstanceof[tp]()
 
-    class _AsInstanceOf:
-        def __init__(self, o):
-            self.o = o
+    @subscriptablemethod
+    def asinstanceof[T](self, tp: Type[T], tp_args: Optional[Tuple[Any, ...]] = None) -> T:
+        if is_instance_of(self, tp, tp_args):
+            return self
+        raise TypeError(f"{self} cannot be cast to {tp}")
 
-        def __getitem__[T](self, tp: Type[T]) -> T:
-            return self.__call__(tp)
+    @overload
+    @subscriptablemethod
+    def shaped[D](self, shape: Type[D]) -> TypedTensor[DType, D]: ...
 
-        def __call__[T](self, tp: Type[T], tp_args: Optional[Tuple[Any, ...]] = None) -> T:
-            if is_instance_of(self.o, tp, tp_args):
-                return self.o
-            raise TypeError(f"{self.o} cannot be cast to {tp}")
+    @overload
+    @subscriptablemethod
+    def shaped[D, *Ds](self, shape: Map[Type, D, *Ds]) -> TypedTensor[DType, D, *Ds]: ...
 
-    @property
-    def asinstanceof(self) -> TypedTensor._AsInstanceOf:
-        return TypedTensor._AsInstanceOf(self)
-
-    class _Shaped[_DType: Tensor]:
-        def __init__(self, o: TypedTensor[_DType, *Dimensions]):
-            self.o = o
-        
-        @overload
-        def __getitem__[D](self, shape: Type[D]) -> TypedTensor[_DType, D]: ...
-
-        @overload
-        def __getitem__[D, *Ds](self, shape: Map[Type, D, *Ds]) -> TypedTensor[_DType, D, *Ds]: ...
-
-        def __getitem__[D, *Ds](self, shape: Map[Type, D, *Ds] | Type[D]) -> TypedTensor[_DType, D, *Ds] | TypedTensor[_DType, D]:
-            tp = TypedTensor[_DType, D, *Ds]
-            tp_args = (self.o.args[0],) + (shape if isinstance(shape, tuple) else (shape,))
-            setattr(tp, "__args__", tp_args)
-            return self.o.asinstanceof(tp)
-
-    @property
-    def shaped[T: Tensor](
-        self: TypedTensor[T, *Dimensions],
-    ) -> TypedTensor._Shaped[T]:
-        return TypedTensor._Shaped[T](self)
+    @subscriptablemethod
+    def shaped[D, *Ds](self, shape: Map[Type, D, *Ds] | Type[D]) -> TypedTensor[DType, D, *Ds] | TypedTensor[DType, D]:
+        tp = TypedTensor[DType, D, *Ds]
+        tp_args = (self.args[0],) + (shape if isinstance(shape, tuple) else (shape,))
+        setattr(tp, "__args__", tp_args)
+        return self.asinstanceof[tp]()
 
     # class _As_Z_D0[T: Tensor]:
     #     def __init__(self, o: TypedTensor[T, *Dimensions]):
@@ -258,16 +242,9 @@ class TypedTensor[DType: Tensor, *Dimensions](CaptureTypeArgs, metaclass=TypedTe
     # ) -> TypedTensor._As_Z_D0_Z_D1_Z[T]:
     #     return TypedTensor._As_Z_D0_Z_D1_Z[T](self)
 
-    class _IsInstanceOf:
-        def __init__(self, o):
-            self.o = o
-
-        def __getitem__[T](self, tp: Type[T]) -> TypeGuard[T]:
-            return is_instance_of(self.o, tp)
-
-    @property
-    def isinstanceof(self) -> TypedTensor._IsInstanceOf:
-        return TypedTensor._IsInstanceOf(self)
+    @subscriptablemethod
+    def isinstanceof[T](self, tp: Type[T]) -> TypeGuard[T]:
+        return is_instance_of(self, tp)
 
     @staticmethod
     def assert_valid_typed_tensor[T: Tensor, *Ds](
@@ -293,103 +270,48 @@ class TypedTensor[DType: Tensor, *Dimensions](CaptureTypeArgs, metaclass=TypedTe
     # E.g. in transpose(self: [*Init, D0, *Mid, D1, *Tail], d0: Type[D0], d1: Type[D1]).
     # Subscriptable methods/functions is a possible solution, where caller needs to specify D0 and D1 first
     # before passing call parameters: transpose[D0, D1]()
-    # 
-    # class _Transpose[_DType: Tensor]:
-    #     def __init__(self, o):
-    #         self.o = o
+    @subscriptablemethod
+    def transpose[*Init, D0, *Mid, D1, *Tail](
+        self: TypedTensor[DType, *Init, D0, *Mid, D1, *Tail], shape: Tuple[Type[D0], Type[D1]]
+    ) -> TypedTensor[DType, *Init, D1, *Mid, D0, *Tail]:
+        dim0, dim1 = tuple([self.dim[tp]() for tp in shape])
+        ts = list(self.args[1:])
+        d0, d1 = ts[dim0], ts[dim1]  # we prefer concrete types from tensor definition
+        ts[dim0] = d1
+        ts[dim1] = d0
+        return TypedTensor(cast(DType, self.tensor.transpose(dim0, dim1)), tuple([self.args[0]] + ts))
 
-    #     def __getitem__[*Init, D0, *Mid, D1, *Tail](
-    #         self, shape: ShapeArgs[D0, D1]
-    #     ) -> TypedTensor[_DType, *Init, D1, *Mid, D0, *Tail]:
-    #         d0, d1 = Shape.types_from(shape)
-    #         dim0, dim1 = tuple([self.o.dim[tp] for tp in (d0, d1)])
-    #         return self(cast(Type[D0], d0), cast(Type[D1], d1), dim0, dim1)
+    @overload
+    @subscriptablemethod
+    def permute[P](self, shape: Type[P]) -> TypedTensor[DType, P]: ...
 
-    #     def __call__[*Init, D0, *Mid, D1, *Tail](
-    #         self, d0: Type[D0], d1: Type[D1], dim0: int, dim1: int
-    #     ) -> TypedTensor[_DType, *Init, D1, *Mid, D0, *Tail]:
-    #         ts = list(self.o.args[1:])
-    #         d0, d1 = ts[dim0], ts[dim1]  # we prefer concrete types from tensor definition
-    #         ts[dim0] = d1
-    #         ts[dim1] = d0
-    #         return TypedTensor(cast(_DType, self.o.tensor.transpose(dim0, dim1)), tuple([self.o.args[0]] + ts))
+    @overload
+    @subscriptablemethod
+    def permute[P, *Ps](self, shape: Map[Type, P, *Ps]) -> TypedTensor[DType, P, *Ps]: ...
 
-    # @property
-    # def transpose(self) -> TypedTensor._Transpose[DType]:
-    #     return TypedTensor._Transpose[DType](self)
-    # def transpose[*Init, D0, *Mid, D1, *Tail](
-    #         self: TypedTensor[DType, *Init, D0, *Mid, D1, *Tail], d0: Type[D0], d1: Type[D1]
-    # ) -> TypedTensor[DType, *Init, D1, *Mid, D0, *Tail]:
-    #     dim0, dim1 = self.dim[d0], self.dim[d1]
-    #     ts = list(self.args[1:])
-    #     d0, d1 = ts[dim0], ts[dim1]  # we prefer concrete types from tensor definition
-    #     ts[dim0] = d1
-    #     ts[dim1] = d0
-    #     return TypedTensor(cast(DType, self.tensor.transpose(dim0, dim1)), tuple([self.args[0]] + ts))
+    @subscriptablemethod
+    def permute[P, *Ps](self, shape: Map[Type, P, *Ps] | Type[P]) -> TypedTensor[DType, P, *Ps] | TypedTensor[DType, P]:
+        types = shape if isinstance(shape, tuple) else (shape,)
+        dims = [self.dim[tp]() for tp in types]
+        return TypedTensor(cast(DType, self.tensor.permute(dims)), (self.args[0],) + types)
 
-    class _Permute[_DType: Tensor]:
-        def __init__(self, o: TypedTensor[_DType, *Dimensions]):
-            self.o = o
+    @overload
+    @subscriptablemethod
+    def view[V](self, shape: Type[V], size: Optional[Size] = None) -> TypedTensor[DType, V]: ...
 
-        @overload
-        def __getitem__[P](self, shape: Type[P]) -> TypedTensor[_DType, P]: ...
+    @overload
+    @subscriptablemethod
+    def view[V, *Vs](self, shape: Map[Type, V, *Vs], size: Optional[Size] = None) -> TypedTensor[DType, V, *Vs]: ...
 
-        @overload
-        def __getitem__[P, *Ps](self, shape: Map[Type, P, *Ps]) -> TypedTensor[_DType, P, *Ps]: ...
-
-        def __getitem__[P, *Ps](self, shape: Map[Type, P, *Ps] | Type[P]) -> TypedTensor[_DType, P, *Ps] | TypedTensor[_DType, P]:
-            types = shape if isinstance(shape, tuple) else (shape,)
-            dims = [self.o.dim[tp] for tp in types]
-            return TypedTensor(cast(_DType, self.o.tensor.permute(dims)), (self.o.args[0],) + types)
-
-    @property
-    def permute(self):
-        return TypedTensor._Permute[DType](self)
-
-    class _View[_DType: Tensor]:
-        def __init__(self, o):
-            self.o = o
-
-        @overload
-        def __getitem__[V](self, shape: Type[V]) -> Callable[[Optional[Size]], TypedTensor[_DType, V]]: ...
-
-        @overload
-        def __getitem__[V, *Vs](self, shape: Map[Type, V, *Vs]) -> Callable[[Optional[Size]], TypedTensor[_DType, V, *Vs]]: ...
-
-        def __getitem__[V, *Vs](self, shape: Map[Type, V, *Vs] | Type[V]) -> Callable[[Optional[Size]], TypedTensor[_DType, V, *Vs]] | Callable[[Optional[Size]], TypedTensor[_DType, V]]:
-            if isinstance(shape, tuple):
-                def innerVVs(size: Optional[Size] = None) -> TypedTensor[_DType, V, *Vs]:
-                    return self(shape, size)
-
-                return innerVVs
-            else:
-                def innerV(size: Optional[Size] = None) -> TypedTensor[_DType, V]:
-                    return self((shape,), size)
-
-                return innerV
-        # def __getitem__[*Vs](self, shape: Map[Type, *Vs]) -> Callable[[Optional[Size]], TypedTensor[_DType, *Vs]]:
-        #     def innerVs(size: Optional[Size] = None) -> TypedTensor[_DType, *Vs]:
-        #         # return self(shape if isinstance(shape, tuple) else (shape,), size)
-        #         return self(shape, size)
-
-        #    return innerVs
-
-        def __call__[*Ks](
-            self,
-            shape: Map[Type, *Ks],
-            size: Optional[Size] = None,
-        ) -> TypedTensor[_DType, *Ks]:
-            if size is None:
-                shape_info = _extract_typed_shape_args(shape)
-                size = shape_info.size()
-                if sum([1 if s < 0 else 0 for s in size]) > 1:
-                    raise TypeError("At most one dimension can be abstract or otherwise provide size argument")
-            return TypedTensor(cast(_DType, self.o.tensor.view(size)), (self.o.args[0],) + shape)
-
-
-    @property
-    def view(self):
-        return TypedTensor._View[DType](self)
+    @subscriptablemethod
+    def view[V, *Vs](self, shape: Map[Type, V, *Vs] | Type[V], size: Optional[Size] = None) -> TypedTensor[DType, V, *Vs] | TypedTensor[DType, V]:
+        shape_tuple = shape if isinstance(shape, tuple) else (shape,)
+        if size is None:
+            shape_info = _extract_typed_shape_args(shape_tuple)
+            size = shape_info.size()
+            if sum([1 if s < 0 else 0 for s in size]) > 1:
+                raise TypeError("At most one dimension can be abstract or otherwise provide size argument")
+        return TypedTensor(cast(DType, self.tensor.view(size)), (self.args[0],) + shape_tuple)
 
     @overload
     def size(self, dim: None = None) -> Size: ...
