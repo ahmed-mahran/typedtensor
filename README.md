@@ -205,7 +205,8 @@ masked_x.asinstanceof[TypedTensor[Tensor, Batch, Head, Seq1, Seq2]] # ACCEPTABLE
 In this section, we highlight typing features that are missing in python however are required for tensors type system. This section will be expanded when new features are added. Also, these features are/will be supported by [MyPyright](https://github.com/ahmed-mahran/pyright).
 
 ## Multiple Variadic Generics
-![MyPyright Support](https://img.shields.io/badge/MyPyright-Yes-green)
+
+[![MyPyright Support](https://img.shields.io/badge/MyPyright-Yes-green)](https://github.com/ahmed-mahran/mypyright#multiple-unpackings-of-type-arguments)
 
 
 Multiple zero or more dimensions! PEP 646 [doesn't allow multilpe variadic type variables](https://peps.python.org/pep-0646/#multiple-type-variable-tuples-not-allowed) nor it allows [multiple unpackings](https://peps.python.org/pep-0646/#multiple-unpackings-in-a-tuple-not-allowed). However, arbitrarly dimension picking operations, like transpose or concatenate, need to describe shape patterns with more than one wildcard. For example, consider the transpose operation:
@@ -240,7 +241,7 @@ a_t: TypedTensor[torch.FloatTensor, BatchDim, FeatureDim, SequenceDim] = (
 
 ## Type Transformations of Variadic Generics
 
-![MyPyright Support](https://img.shields.io/badge/MyPyright-Yes-green)
+[![MyPyright Support](https://img.shields.io/badge/MyPyright-Yes-green)](https://github.com/ahmed-mahran/mypyright#type-transformations-of-variadic-type-variables)
 
 Passing dimensions classes as arguments through variadic type variables as parameters would capture the type of the dimension class and not the class itself, e.g. `Type[Batch]` instead of `Batch`. This makes it impossible to describe some tensor operations as they would produce tensors like `TypedTensor[Tensor, Type[Batch], Type[Features]]` instead of `TypedTensor[Tensor, Batch, Features]`.
 
@@ -262,3 +263,66 @@ It will be more convenient if python allows type transformations on variadic gen
 fn[*Ds](types: *Map[Type, *Ds]) -> TypedTensor[Tensor, *Ds]: ...
 reveal_type(fn(Batch, Feature)) # TypedTensor[Tensor, Batch, Features]
 ```
+
+## Subscriptable Functions
+
+[![MyPyright Support](https://img.shields.io/badge/MyPyright-Yes-green)](https://github.com/ahmed-mahran/mypyright#subscriptable-functions)
+
+It is common in typed tensor operations to pass dimension types as function arguments. This is a major goal of typed tensor operations anyways; we don't want to pass around dimension indices anymore. Subscriptable functions imposes itself mainly for the following reasons:
+
+- As a syntactic sugar: Type arguments are more naturally fit where type parameters are defined/expected. If you define a generic function `def fn[T](tp: Type[T])`, it feels more natural to pass a type argument such as `int` between the square brackets, i.e. `fn[int]()` instead of `fn(int)`.
+- As a functional need: It is crucial to be able to bind certain type parameters to specific type arguments regardless from the order of function parameters. This is crucial especially in methods where `self` argument needs to be annotated using certain type parameters that appear next in method signature. Also, when multiple variadic type variables are used in `self` annotation, pre- and post-binding of a type variable can lead to different variadic type variables assignment.
+
+Consider the following `transpose` operation which is supposed to swap two dimensions:
+
+```python
+class Tensor[*Shape]:
+  def transpose[*Init, D1, *Mid, D2, *Tail](
+    self: Tensor[*Init, D1, *Mid, D2, *Tail],
+    d1: Type[D1],
+    d2: Type[D2]
+  ) -> Tensor[*Init, D2, *Mid, D1, *Tail]: ...
+```
+
+The `transpose` operation matches any tensor shape with the pattern `[*Init, D1, *Mid, D2, *Tail]`. It is only interested in the two dimensions `D1` and `D2` that will swap places in the same shape pattern to result in the shape `[*Init, D2, *Mid, D1, *Tail]`.
+
+```python
+x = Tensor[A, B, C, D]()
+reveal_type(x.transpose(B, D)) # Tensor[A, B, D, C]
+# Error:
+# Argument of type "type[B]" cannot be assigned to parameter "d1" of type "type[C]" in function "transpose"
+#  "type[B]" is not assignable to "type[C]"
+```
+
+The type checker has matched the type parameters of `self: Tensor[*Init, D1, *Mid, D2, *Tail]` first leading to the assignment: `*Init = [A, B], D1 = C, *Mid = [], D2 = D, *Tail = []`. Then by substituting these assignements in the rest of the function parameters and return type, the method signature becomes:
+
+```python
+# Note: this is an invalid syntax for purpose of illustration.
+# We could use *tuple though, but no need to add more unneccessary complexity.
+def transpose(
+  self: Tensor[*[A, B], C, *[], D, *[]],
+  d1: Type[C],
+  d2: Type[D]
+) -> Tensor[*[A, B], D, *[], C, *[]]: ...
+```
+
+This explains the return type of `Tensor[A, B, D, C]` instead of the correct and expected `Tensor[A, D, C, B]`. This also explains type error in function first argument, the method expects `d1` of type `Type[C]` while the caller has passed an argument of type `Type[B]`.
+
+This should be resolved with subscriptable functions.
+
+```python
+x = Tensor[A, B, C, D]()
+reveal_type(x.transpose[B, D]()) # Tensor[A, D, C, B]
+```
+
+The type checker should match the type parameters of `transpose` first leading to the assignment `D1 = B, D2 = D`. Then by substituting these assignements in the rest of the function parameters and return type, the method signature becomes:
+
+```python
+def transpose(
+  self: Tensor[*Init, B, *Mid, D, *Tail],
+  d1: Type[B],
+  d2: Type[D]
+) -> Tensor[*Init, D, *Mid, B, *Tail]: ...
+```
+
+Now the type checker can correctly and as intended match function parameters with arguments and infer return type. Matching arguments to parameters leads to the assignment: `*Init = [A], *Mid = [C], *Tail = []` and hence a correct return type `Tensor[A, D, C, B]`.
